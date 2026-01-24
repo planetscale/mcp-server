@@ -5,9 +5,66 @@ export interface ValidationResult {
 }
 
 /**
+ * Detects if a WHERE clause is a tautology (always true).
+ * Common patterns: WHERE 1=1, WHERE 1, WHERE TRUE, WHERE 'a'='a', etc.
+ */
+function hasAlwaysTrueWhereClause(query: string): boolean {
+  const normalized = query.toUpperCase();
+
+  // Extract the WHERE clause
+  const whereMatch = normalized.match(/\bWHERE\s+(.+?)(?:ORDER\s+BY|GROUP\s+BY|LIMIT|$)/i);
+  if (!whereMatch || !whereMatch[1]) return false;
+
+  const whereClause = whereMatch[1].trim();
+
+  // Patterns that are always true
+  const alwaysTruePatterns = [
+    /^1\s*=\s*1$/,           // WHERE 1=1
+    /^1$/,                    // WHERE 1
+    /^TRUE$/,                 // WHERE TRUE
+    /^'[^']*'\s*=\s*'[^']*'$/, // WHERE 'a'='a' (same string comparison)
+    /^"[^"]*"\s*=\s*"[^"]*"$/, // WHERE "a"="a"
+    /^\d+\s*=\s*\d+$/,        // WHERE 2=2, etc. (will check if equal below)
+  ];
+
+  for (const pattern of alwaysTruePatterns) {
+    if (pattern.test(whereClause)) {
+      // For numeric comparisons, verify both sides are equal
+      if (whereClause.includes('=')) {
+        const parts = whereClause.split('=').map(p => p.trim());
+        if (parts.length === 2 && parts[0] === parts[1]) {
+          return true;
+        }
+        // Check for 1=1 style
+        const left = parts[0];
+        const right = parts[1];
+        if (left && right && /^\d+$/.test(left) && /^\d+$/.test(right) && left === right) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
+  }
+
+  // Check for string literal equality like 'a'='a'
+  const stringEqualityMatch = whereClause.match(/^(['"])(.+?)\1\s*=\s*(['"])(.+?)\3$/);
+  if (stringEqualityMatch) {
+    const leftStr = stringEqualityMatch[2];
+    const rightStr = stringEqualityMatch[4];
+    if (leftStr && rightStr && leftStr === rightStr) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Validates a write query for safety.
  * - Blocks TRUNCATE entirely
  * - Blocks DELETE/UPDATE without WHERE clause entirely (even with confirmation)
+ * - Blocks DELETE/UPDATE with always-true WHERE clauses (e.g., WHERE 1=1)
  * - Requires confirmation for DELETE queries with WHERE clause
  */
 export function validateWriteQuery(
@@ -28,7 +85,7 @@ export function validateWriteQuery(
   // DELETE validation
   if (normalized.startsWith("DELETE")) {
     const hasWhere = /\bWHERE\b/i.test(query);
-    
+
     // Block DELETE without WHERE entirely
     if (!hasWhere) {
       return {
@@ -37,7 +94,16 @@ export function validateWriteQuery(
         reason: "DELETE without a WHERE clause is not allowed. This would affect the entire table.",
       };
     }
-    
+
+    // Block DELETE with always-true WHERE clause (e.g., WHERE 1=1)
+    if (hasAlwaysTrueWhereClause(query)) {
+      return {
+        allowed: false,
+        requiresConfirmation: false,
+        reason: "DELETE with an always-true WHERE clause (e.g., WHERE 1=1) is not allowed. This would affect the entire table.",
+      };
+    }
+
     // DELETE with WHERE requires confirmation
     if (!confirmed) {
       return {
@@ -51,13 +117,22 @@ export function validateWriteQuery(
   // UPDATE validation
   if (normalized.startsWith("UPDATE")) {
     const hasWhere = /\bWHERE\b/i.test(query);
-    
+
     // Block UPDATE without WHERE entirely
     if (!hasWhere) {
       return {
         allowed: false,
         requiresConfirmation: false,
         reason: "UPDATE without a WHERE clause is not allowed. This would affect the entire table.",
+      };
+    }
+
+    // Block UPDATE with always-true WHERE clause
+    if (hasAlwaysTrueWhereClause(query)) {
+      return {
+        allowed: false,
+        requiresConfirmation: false,
+        reason: "UPDATE with an always-true WHERE clause (e.g., WHERE 1=1) is not allowed. This would affect the entire table.",
       };
     }
   }
