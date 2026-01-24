@@ -16,7 +16,7 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 export const executeWriteQueryGram = new Gram().tool({
   name: "execute_write_query",
   description:
-    "Execute a write SQL query (INSERT, UPDATE, DELETE) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. TRUNCATE is blocked. DELETE and UPDATE without WHERE clause are blocked. DELETE queries require confirm_destructive: true.",
+    "Execute a write SQL query (INSERT, UPDATE, DELETE) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. TRUNCATE is blocked. DELETE and UPDATE without WHERE clause are blocked. IMPORTANT: DELETE queries require human confirmation - you MUST ask the user for explicit approval before setting confirm_destructive: true. Never set confirm_destructive without first showing the user the exact query and getting their explicit 'yes' or approval.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -26,12 +26,10 @@ export const executeWriteQueryGram = new Gram().tool({
       .boolean()
       .optional()
       .describe(
-        "Required for DELETE queries and UPDATE/DELETE without WHERE clause"
+        "HUMAN CONFIRMATION REQUIRED: Only set to true after explicitly asking the user and receiving their approval. Show them the exact DELETE query first."
       ),
   },
   async execute(ctx, input) {
-    console.error(`[execute_write_query] Called with input:`, JSON.stringify(input));
-    
     try {
       // Try ctx.env first, fall back to process.env for local development
       const env = Object.keys(ctx.env).length > 0
@@ -41,9 +39,8 @@ export const executeWriteQueryGram = new Gram().tool({
       // Check authentication
       const auth = getAuthToken(env);
       if (!auth) {
-        return ctx.text("Error: No PlanetScale authentication configured. Set PLANETSCALE_OAUTH2_ACCESS_TOKEN or PLANETSCALE_API_TOKEN.");
+        return ctx.text("Error: No PlanetScale authentication configured.");
       }
-      console.error(`[execute_write_query] Using auth type: ${auth.authType}`);
 
       const query = input["query"];
       if (!query) {
@@ -62,10 +59,10 @@ export const executeWriteQueryGram = new Gram().tool({
       // Validate the write query for safety
       const validation = validateWriteQuery(query, confirmed);
       if (!validation.allowed) {
-        const confirmHint = validation.requiresConfirmation 
-          ? " Set confirm_destructive: true to proceed." 
-          : "";
-        return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}${confirmHint}`);
+        if (validation.requiresConfirmation) {
+          return ctx.text(`HUMAN CONFIRMATION REQUIRED\n\nThis DELETE query needs explicit user approval before execution.\n\nQuery: ${query}\n\nINSTRUCTIONS FOR AI: You must ASK the user if they want to proceed with this query. Do NOT set confirm_destructive: true until the user explicitly says "yes" or "approved" or similar confirmation.`);
+        }
+        return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}`);
       }
 
       // Get auth header for API calls
@@ -100,8 +97,6 @@ export const executeWriteQueryGram = new Gram().tool({
         return ctx.json(result);
       }
     } catch (error) {
-      console.error(`[execute_write_query] Error:`, error);
-      
       if (error instanceof PlanetScaleAPIError) {
         return ctx.text(`Error: ${error.message} (status: ${error.statusCode})`);
       }

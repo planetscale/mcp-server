@@ -109,7 +109,7 @@ export function validateWriteQuery(
       return {
         allowed: false,
         requiresConfirmation: true,
-        reason: "DELETE queries require confirmation. Set confirm_destructive: true to proceed.",
+        reason: "DELETE queries require human confirmation. STOP and ask the user: 'This DELETE query will modify data. Do you want me to proceed with: [show the query]?' Only proceed with confirm_destructive: true after the user explicitly approves.",
       };
     }
   }

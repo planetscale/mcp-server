@@ -59,8 +59,13 @@ export async function executePostgresQuery(
   // Configure Neon for PlanetScale Postgres connections
   neonConfig.fetchEndpoint = (host) => `https://${host}/sql`;
 
-  // Build the connection URL
-  const connectionUrl = `postgresql://${encodeURIComponent(credentials.username)}:${encodeURIComponent(credentials.password)}@${credentials.host}:5432/${encodeURIComponent(credentials.database_name)}`;
+  // Append |replica to username for replica routing if enabled
+  const username = credentials.replica
+    ? `${credentials.username}|replica`
+    : credentials.username;
+
+  // Build the connection URL (port 5432 for direct connections, required for replicas)
+  const connectionUrl = `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(credentials.password)}@${credentials.host}:5432/${encodeURIComponent(credentials.database_name)}`;
 
   const sql = neon(connectionUrl);
 

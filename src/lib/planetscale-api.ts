@@ -10,6 +10,14 @@ export interface Database {
   state: string;
 }
 
+export interface Branch {
+  id: string;
+  name: string;
+  kind: DatabaseKind;
+  production: boolean;
+  has_replicas: boolean;
+}
+
 export interface VitessCredentials {
   id: string;
   username: string;
@@ -31,6 +39,7 @@ export interface PostgresCredentials {
     name: string;
     id: string;
   };
+  replica?: boolean;
 }
 
 export type VitessRole = "reader" | "writer" | "admin" | "readwriter";
@@ -127,6 +136,21 @@ export async function getDatabase(
 }
 
 /**
+ * Get branch information including replica availability
+ */
+export async function getBranch(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string
+): Promise<Branch> {
+  return apiRequest<Branch>(
+    `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`,
+    authHeader
+  );
+}
+
+/**
  * Create short-lived credentials for a Vitess (MySQL) database
  */
 export async function createVitessCredentials(
@@ -134,7 +158,8 @@ export async function createVitessCredentials(
   database: string,
   branch: string,
   role: VitessRole,
-  authHeader: string
+  authHeader: string,
+  replica?: boolean
 ): Promise<VitessCredentials> {
   const timestamp = Date.now();
   const name = `mcp-query-${timestamp}`;
@@ -157,6 +182,7 @@ export async function createVitessCredentials(
         name,
         role,
         ttl: 60, // 60 seconds TTL
+        replica: replica ?? false,
       }),
     }
   );
