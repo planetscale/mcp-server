@@ -61,8 +61,34 @@ function hasAlwaysTrueWhereClause(query: string): boolean {
 }
 
 /**
+ * Detects if a query is a DDL (Data Definition Language) statement.
+ * DDL statements modify database schema: CREATE, DROP, ALTER, TRUNCATE, RENAME
+ */
+function isDDLQuery(query: string): { isDDL: boolean; statement: string | null } {
+  const normalized = query.trim().toUpperCase();
+  
+  // DDL keywords that modify schema
+  const ddlPatterns = [
+    { pattern: /^DROP\s+(TABLE|INDEX|DATABASE|SCHEMA|VIEW|TRIGGER|PROCEDURE|FUNCTION|EVENT)/i, statement: "DROP" },
+    { pattern: /^ALTER\s+(TABLE|INDEX|DATABASE|SCHEMA|VIEW|TRIGGER|PROCEDURE|FUNCTION|EVENT)/i, statement: "ALTER" },
+    { pattern: /^CREATE\s+(TABLE|INDEX|DATABASE|SCHEMA|VIEW|TRIGGER|PROCEDURE|FUNCTION|EVENT)/i, statement: "CREATE" },
+    { pattern: /^TRUNCATE/i, statement: "TRUNCATE" },
+    { pattern: /^RENAME\s+TABLE/i, statement: "RENAME" },
+  ];
+
+  for (const { pattern, statement } of ddlPatterns) {
+    if (pattern.test(normalized)) {
+      return { isDDL: true, statement };
+    }
+  }
+
+  return { isDDL: false, statement: null };
+}
+
+/**
  * Validates a write query for safety.
  * - Blocks TRUNCATE entirely
+ * - Requires confirmation for DDL (CREATE, DROP, ALTER, RENAME) statements
  * - Blocks DELETE/UPDATE without WHERE clause entirely (even with confirmation)
  * - Blocks DELETE/UPDATE with always-true WHERE clauses (e.g., WHERE 1=1)
  * - Requires confirmation for DELETE queries with WHERE clause
@@ -73,6 +99,9 @@ export function validateWriteQuery(
 ): ValidationResult {
   const normalized = query.trim().toUpperCase();
 
+  // Check for DDL statements
+  const ddlCheck = isDDLQuery(query);
+  
   // Block TRUNCATE entirely
   if (normalized.startsWith("TRUNCATE")) {
     return {
@@ -80,6 +109,17 @@ export function validateWriteQuery(
       requiresConfirmation: false,
       reason: "TRUNCATE is not allowed. This operation cannot be undone.",
     };
+  }
+
+  // DDL statements (DROP, ALTER, CREATE, RENAME) require confirmation
+  if (ddlCheck.isDDL && ddlCheck.statement !== "TRUNCATE") {
+    if (!confirmed) {
+      return {
+        allowed: false,
+        requiresConfirmation: true,
+        reason: `${ddlCheck.statement} is a DDL (schema-modifying) statement that requires human confirmation. STOP and ask the user: 'This ${ddlCheck.statement} query will modify the database schema. Do you want me to proceed with: [show the query]?' Only proceed with confirm_destructive: true after the user explicitly approves.`,
+      };
+    }
   }
 
   // DELETE validation
