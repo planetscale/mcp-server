@@ -84,12 +84,13 @@ export const executeWriteQueryGram = new Gram().tool({
         const result = await executeVitessQuery(credentials, query);
         return ctx.json(result);
       } else {
-        // Postgres database - create role with read and write permissions
+        // Postgres database - create role with full permissions including DDL
+        // The 'postgres' role provides superuser-like permissions needed for DDL operations
         const credentials = await createPostgresCredentials(
           organization,
           database,
           branch,
-          ["pg_read_all_data", "pg_write_all_data"],
+          ["postgres"],
           authHeader
         );
 
