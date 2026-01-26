@@ -85,16 +85,24 @@ export const executeWriteQueryGram = new Gram().tool({
         return ctx.json(result);
       } else {
         // Postgres database - create role with full permissions including DDL
-        // The 'postgres' role provides superuser-like permissions needed for DDL operations
+        // - 'postgres' provides full access to the database
+        // - 'pg_write_all_data' provides write access to all tables
+        // - 'pg_maintain' (Postgres 17+) allows maintenance operations (CREATE INDEX,
+        //   VACUUM, etc.) on any table regardless of ownership
         const credentials = await createPostgresCredentials(
           organization,
           database,
           branch,
-          ["postgres"],
+          ["postgres", "pg_write_all_data", "pg_maintain"],
           authHeader
         );
 
-        const result = await executePostgresQuery(credentials, query);
+        // For CREATE statements, set the role to 'postgres' so objects are owned
+        // by a shared role rather than the ephemeral user. This allows future
+        // ephemeral users to manage (alter, drop, add indexes to) these objects.
+        const result = await executePostgresQuery(credentials, query, {
+          ownerRole: "postgres",
+        });
         return ctx.json(result);
       }
     } catch (error) {
