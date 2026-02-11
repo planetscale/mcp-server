@@ -3,7 +3,7 @@ import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const DEFAULT_MCP_URL = "https://planetscale.com/mcp";
+const DEFAULT_MCP_URL = "https://planetscale.com/docs/mcp";
 
 type NormalizedResult = {
   title?: string;
