@@ -71,7 +71,6 @@ function formatCpu(cpu: string): string {
  */
 function formatRate(rate: number | null): string | null {
   if (rate == null) return null;
-  // Assume rate is in cents per month; convert to dollars
   const dollars = rate / 100;
   return `$${dollars}/mo`;
 }
@@ -215,7 +214,7 @@ function buildTierSummaries(
 export const listClusterSizesGram = new Gram().tool({
   name: "list_cluster_sizes",
   description:
-    "List available PlanetScale cluster sizes (SKUs) for an organization. Returns a compact, deduplicated list of compute tiers. PS-* sizes use autoscaling network-backed storage; M-* sizes use local (metal) storage with fixed storage tiers. The API is called with rates=true so rate and replica_rate are included when available. The rate field is for an HA cluster with 2 replicas; replica_rate is for a single instance. Single instance databases are only available for Postgres. Metal instances must be HA.",
+    "List available PlanetScale cluster sizes (SKUs) for an organization. PS-* sizes use autoscaling network-backed storage; M-* sizes use super fast NVMe storage drives. The rate field is for an HA cluster with 2 replicas; replica_rate is for a single instance. Single instance databases are only available for Postgres. Metal instances must be HA.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     engine: z
