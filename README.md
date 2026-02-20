@@ -3,7 +3,7 @@
 This repository contains tool implementations that are part of the [PlanetScale MCP server][ps-mcp].
 
 The full hosted MCP server includes additional tools that are generated from
-the PlanetScale API OpenAPI spec, so not every production tool lives in this
+the PlanetScale API OpenAPI spec, not every production tool lives in this
 repository.
 
 ## Related docs
