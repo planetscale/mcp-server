@@ -1,39 +1,63 @@
-# PlanetScale mcp server functions
+# PlanetScale MCP Server Tools
+
+This repository contains tool implementations that are part of the PlanetScale MCP server.
+
+The full hosted MCP server includes additional tools that are generated from
+the PlanetScale API OpenAPI spec, so not every production tool lives in this
+repository.
+
+## Related docs
+
+- Hosted server overview: [PlanetScale MCP docs][ps-mcp]
+- PlanetScale API OpenAPI spec: [OpenAPI spec docs][ps-openapi]
+
+## Project scope
+
+This repo is focused on:
+
+- MCP tools we maintain directly in TypeScript
+- shared helper code used by those tools
+- local development and validation of the open-source portions
+
+Some MCP functionality is intentionally not duplicated here because it is
+generated from the API spec and maintained in that generation pipeline.
 
 ## Quick start
 
-To get started, install dependencies and run the development server:
+Install dependencies:
 
 ```bash
 pnpm install
 ```
 
-To build a zip file that can be deployed to Gram, run:
+Build a deployment zip:
 
 ```bash
 pnpm build
 ```
 
-After building, push your function to Gram with:
+Push to Gram:
 
 ```bash
 pnpm push
 ```
 
-## Testing Locally
+## Testing locally
 
-If you want to poke at the tools you've built during local development, you can
-start a local MCP server over stdio transport with:
+Run a local MCP server over stdio with inspector support:
 
 ```bash
 pnpm dev
 ```
 
-Specifically, this command will spin up [MCP inspector][mcp-inspector] to let
-you interactively test your tools.
+This launches [MCP Inspector][mcp-inspector] so you can interactively test tool
+behavior during development.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution workflow and project
+conventions.
 
 [mcp-inspector]: https://github.com/modelcontextprotocol/inspector
-
-## What next?
-
-To learn more about using the framework, check out [CONTRIBUTING.md](./CONTRIBUTING.md)
+[ps-mcp]: https://planetscale.com/docs/connect/mcp
+[ps-openapi]: https://planetscale.com/docs/api/openapi-spec
