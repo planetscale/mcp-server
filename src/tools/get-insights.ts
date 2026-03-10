@@ -440,7 +440,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). When a fingerprint is provided, returns the aggregated summary stats (normalized SQL, query count, rows read, latency, indexes, etc.) plus any individual executions that exceeded thresholds.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -463,29 +463,31 @@ export const getInsightsGram = new Gram().tool({
       .array(z.string())
       .optional()
       .describe(
-        "Request specific metric fields from the API (e.g. ['query', 'count', 'rowsRead', 'rowsAffected', 'rowsReadPerReturned', 'egressBytes', 'indexes', 'maxShardQueries'])"
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'rowsRead', 'rowsAffected', 'rowsReadPerReturned', 'egressBytes', 'indexes', 'maxShardQueries']). Ignored when fingerprint is provided."
       ),
     fingerprint: z
       .string()
       .optional()
       .describe(
-        "Query fingerprint hash to fetch aggregated summary stats and individual executions for a specific query pattern"
+        "Query fingerprint hash to drill down into a specific query pattern. Use the `fingerprint` value from an initial insights call. Always include `keyspace` (also from the initial results) to get summary data."
       ),
     keyspace: z
       .string()
       .optional()
-      .describe("Filter by keyspace name (used with fingerprint mode)"),
+      .describe(
+        "Keyspace for fingerprint drill-down. Required to get summary data. Use the `keyspace` value returned in insights results (e.g. 'my_keyspace' for MySQL/Vitess or 'postgres.public' for Postgres databases)."
+      ),
     from: z
       .string()
       .optional()
       .describe(
-        "Start of time range (ISO 8601 format, e.g. '2026-03-09T00:00:00.000Z'). Defaults to 24 hours ago. Used with fingerprint mode."
+        "Start of time range (ISO 8601 format, e.g. '2026-03-09T00:00:00.000Z'). Defaults to 24 hours ago. Only used in fingerprint mode."
       ),
     to: z
       .string()
       .optional()
       .describe(
-        "End of time range (ISO 8601 format). Defaults to now. Used with fingerprint mode."
+        "End of time range (ISO 8601 format). Defaults to now. Only used in fingerprint mode."
       ),
   },
   async execute(ctx, input) {
