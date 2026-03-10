@@ -90,6 +90,44 @@ export interface SelectedQueryResponse {
   data: SelectedQueryEntry[];
 }
 
+export interface FingerprintSummary {
+  id: string;
+  fingerprint: string;
+  normalized_sql: string;
+  statement_type: string;
+  keyspace: string;
+  tables: string[];
+  qualified_tables: string[];
+  table_keyspaces: string[];
+  index_usages: unknown[];
+  query_count: number;
+  error_count: number;
+  sum_rows_read: number;
+  sum_rows_returned: number;
+  sum_rows_affected: number;
+  rows_read_per_returned: number;
+  rows_read_per_query: number;
+  sum_total_duration_millis: number;
+  sum_total_duration_percent: number;
+  time_per_query: number;
+  p50_latency: number;
+  p99_latency: number;
+  max_latency: number;
+  egress_bytes: number;
+  egress_bytes_per_query: number;
+  max_egress_bytes: number;
+  max_shard_queries: number;
+  last_run_at: string | null;
+  slugs: Array<{
+    style: string;
+    name: string;
+    alias: string;
+    type: string;
+    required: boolean;
+  }>;
+  multishard: boolean;
+}
+
 // Fields to include in selected query results for token efficiency
 const SELECTED_QUERY_FIELDS = [
   "id",
@@ -205,6 +243,126 @@ function filterSelectedEntry(
   return filtered;
 }
 
+// Fields to include in fingerprint summary results (strip HTML fields)
+const SUMMARY_FIELDS = [
+  "id",
+  "fingerprint",
+  "normalized_sql",
+  "statement_type",
+  "keyspace",
+  "tables",
+  "qualified_tables",
+  "index_usages",
+  "query_count",
+  "error_count",
+  "sum_rows_read",
+  "sum_rows_returned",
+  "sum_rows_affected",
+  "rows_read_per_returned",
+  "rows_read_per_query",
+  "sum_total_duration_millis",
+  "sum_total_duration_percent",
+  "time_per_query",
+  "p50_latency",
+  "p99_latency",
+  "max_latency",
+  "egress_bytes",
+  "egress_bytes_per_query",
+  "max_egress_bytes",
+  "max_shard_queries",
+  "last_run_at",
+  "slugs",
+  "multishard",
+] as const;
+
+/**
+ * Filter a fingerprint summary to only include useful fields (strip HTML)
+ */
+function filterSummary(
+  entry: FingerprintSummary
+): Partial<FingerprintSummary> {
+  const filtered: Partial<FingerprintSummary> = {};
+  for (const field of SUMMARY_FIELDS) {
+    const value = entry[field as keyof FingerprintSummary];
+    if (value === undefined) continue;
+    if (value === 0 || value === 0.0) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (value === null) continue;
+    (filtered as Record<string, unknown>)[field] = value;
+  }
+  return filtered;
+}
+
+/**
+ * Fetch aggregated summary stats for a specific fingerprint
+ */
+async function fetchFingerprintSummary(
+  organization: string,
+  database: string,
+  branch: string,
+  fingerprint: string,
+  options: {
+    keyspace?: string;
+    from?: string;
+    to?: string;
+    tabletType?: string;
+  },
+  authHeader: string
+): Promise<FingerprintSummary | null> {
+  let url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights/${encodeURIComponent(fingerprint)}/summary?`;
+  const params: string[] = [];
+  if (options.keyspace) {
+    params.push(`keyspace=${encodeURIComponent(options.keyspace)}`);
+  }
+  if (options.from) {
+    params.push(`from=${encodeURIComponent(options.from)}`);
+  }
+  if (options.to) {
+    params.push(`to=${encodeURIComponent(options.to)}`);
+  }
+  if (options.tabletType) {
+    params.push(`tablet_type=${encodeURIComponent(options.tabletType)}`);
+  }
+  url += params.join("&");
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return null;
+    }
+
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new PlanetScaleAPIError(
+        "Permission denied. Please check your API token has the required permissions.",
+        response.status,
+        details
+      );
+    }
+
+    throw new PlanetScaleAPIError(
+      `Failed to fetch fingerprint summary: ${response.statusText}`,
+      response.status,
+      details
+    );
+  }
+
+  return (await response.json()) as FingerprintSummary;
+}
+
 /**
  * Fetch individual query executions for a specific fingerprint (drill-down view)
  */
@@ -282,7 +440,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica) and drilling down into individual executions of a specific query pattern via fingerprint.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). When a fingerprint is provided, returns the aggregated summary stats (normalized SQL, query count, rows read, latency, indexes, etc.) plus any individual executions that exceeded thresholds.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -311,23 +469,23 @@ export const getInsightsGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Query fingerprint hash to fetch individual executions (selected queries / drill-down view)"
+        "Query fingerprint hash to fetch aggregated summary stats and individual executions for a specific query pattern"
       ),
     keyspace: z
       .string()
       .optional()
-      .describe("Filter by keyspace name (used with fingerprint drill-down)"),
+      .describe("Filter by keyspace name (used with fingerprint mode)"),
     from: z
       .string()
       .optional()
       .describe(
-        "Start of time range (ISO 8601 format, e.g. '2026-03-09T00:00:00.000Z'). Defaults to 24 hours ago. Used with fingerprint drill-down."
+        "Start of time range (ISO 8601 format, e.g. '2026-03-09T00:00:00.000Z'). Defaults to 24 hours ago. Used with fingerprint mode."
       ),
     to: z
       .string()
       .optional()
       .describe(
-        "End of time range (ISO 8601 format). Defaults to now. Used with fingerprint drill-down."
+        "End of time range (ISO 8601 format). Defaults to now. Used with fingerprint mode."
       ),
   },
   async execute(ctx, input) {
@@ -362,7 +520,7 @@ export const getInsightsGram = new Gram().tool({
 
       const authHeader = getAuthHeader(env);
 
-      // Fingerprint drill-down mode: fetch individual executions of a query pattern
+      // Fingerprint mode: fetch summary stats + individual executions
       if (fingerprint) {
         const now = new Date();
         const twentyFourHoursAgo = new Date(
@@ -371,30 +529,45 @@ export const getInsightsGram = new Gram().tool({
         const from = input["from"] ?? twentyFourHoursAgo.toISOString();
         const to = input["to"] ?? now.toISOString();
 
-        const entries = await fetchSelectedQueries(
-          organization,
-          database,
-          branch,
-          fingerprint,
-          {
-            keyspace: input["keyspace"],
-            from,
-            to,
-            perPage: limit,
-            tabletType,
-          },
-          authHeader
-        );
+        const sharedOptions = {
+          keyspace: input["keyspace"],
+          from,
+          to,
+          tabletType,
+        };
 
-        const results = entries.map(filterSelectedEntry);
+        // Fetch summary and individual executions in parallel
+        const [summary, entries] = await Promise.all([
+          fetchFingerprintSummary(
+            organization,
+            database,
+            branch,
+            fingerprint,
+            sharedOptions,
+            authHeader
+          ),
+          fetchSelectedQueries(
+            organization,
+            database,
+            branch,
+            fingerprint,
+            { ...sharedOptions, perPage: limit },
+            authHeader
+          ),
+        ]);
+
+        const executions = entries.map(filterSelectedEntry);
         return ctx.json({
-          mode: "selected_queries",
+          mode: "fingerprint",
           fingerprint,
           keyspace: input["keyspace"],
           from,
           to,
-          total_queries: results.length,
-          queries: results,
+          summary: summary ? filterSummary(summary) : null,
+          executions: {
+            total: executions.length,
+            queries: executions,
+          },
         });
       }
 
