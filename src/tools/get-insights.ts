@@ -101,9 +101,13 @@ async function fetchInsights(
   branch: string,
   sortBy: SortMetric,
   limit: number,
-  authHeader: string
+  authHeader: string,
+  tabletType?: string
 ): Promise<InsightsEntry[]> {
-  const url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights?per_page=${limit}&sort=${sortBy}&dir=desc`;
+  let url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights?per_page=${limit}&sort=${sortBy}&dir=desc`;
+  if (tabletType) {
+    url += `&tablet_type=${encodeURIComponent(tabletType)}`;
+  }
 
   const response = await fetch(url, {
     method: "GET",
@@ -257,7 +261,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports drilling down into individual executions of a specific query pattern via fingerprint.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica) and drilling down into individual executions of a specific query pattern via fingerprint.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -272,6 +276,10 @@ export const getInsightsGram = new Gram().tool({
       .number()
       .optional()
       .describe("Number of results per metric (default: 5, max: 20)"),
+    tablet_type: z
+      .enum(["primary", "replica"])
+      .optional()
+      .describe("Filter by tablet type: 'primary' or 'replica'"),
     fingerprint: z
       .string()
       .optional()
@@ -321,6 +329,7 @@ export const getInsightsGram = new Gram().tool({
 
       const sortBy = input["sort_by"] ?? "all";
       const limit = Math.min(input["limit"] ?? 5, 20); // Cap at 20
+      const tabletType = input["tablet_type"];
       const fingerprint = input["fingerprint"];
 
       const authHeader = getAuthHeader(env);
@@ -344,6 +353,7 @@ export const getInsightsGram = new Gram().tool({
             from,
             to,
             perPage: limit,
+            tabletType,
           },
           authHeader
         );
@@ -371,7 +381,8 @@ export const getInsightsGram = new Gram().tool({
             branch,
             metric,
             limit,
-            authHeader
+            authHeader,
+            tabletType
           );
 
           for (const entry of entries) {
@@ -397,7 +408,8 @@ export const getInsightsGram = new Gram().tool({
           branch,
           sortBy as SortMetric,
           limit,
-          authHeader
+          authHeader,
+          tabletType
         );
 
         const results = entries.map(filterEntry);
