@@ -23,10 +23,18 @@ const RESULT_FIELDS = [
   "normalized_sql",
   "query_count",
   "sum_total_duration_millis",
+  "sum_total_duration_percent",
   "rows_read_per_returned",
   "sum_rows_read",
-  "p99_latency",
+  "sum_rows_returned",
   "sum_rows_affected",
+  "p50_latency",
+  "p99_latency",
+  "max_latency",
+  "egress_bytes",
+  "egress_bytes_per_query",
+  "max_egress_bytes",
+  "max_shard_queries",
   "tables",
   "index_usages",
   "keyspace",
@@ -39,10 +47,18 @@ export interface InsightsEntry {
   normalized_sql?: string;
   query_count?: number;
   sum_total_duration_millis?: number;
+  sum_total_duration_percent?: number;
   rows_read_per_returned?: number;
   sum_rows_read?: number;
-  p99_latency?: number;
+  sum_rows_returned?: number;
   sum_rows_affected?: number;
+  p50_latency?: number;
+  p99_latency?: number;
+  max_latency?: number;
+  egress_bytes?: number;
+  egress_bytes_per_query?: number;
+  max_egress_bytes?: number;
+  max_shard_queries?: number;
   tables?: string[];
   index_usages?: unknown[];
   keyspace?: string;
@@ -102,11 +118,15 @@ async function fetchInsights(
   sortBy: SortMetric,
   limit: number,
   authHeader: string,
-  tabletType?: string
+  tabletType?: string,
+  fields?: string[]
 ): Promise<InsightsEntry[]> {
   let url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights?per_page=${limit}&sort=${sortBy}&dir=desc`;
   if (tabletType) {
     url += `&tablet_type=${encodeURIComponent(tabletType)}`;
+  }
+  if (fields && fields.length > 0) {
+    url += `&${fields.map((f) => `fields[]=${encodeURIComponent(f)}`).join("&")}`;
   }
 
   const response = await fetch(url, {
@@ -158,9 +178,10 @@ async function fetchInsights(
 function filterEntry(entry: InsightsEntry): Partial<InsightsEntry> {
   const filtered: Partial<InsightsEntry> = {};
   for (const field of RESULT_FIELDS) {
-    if (field in entry && entry[field as keyof InsightsEntry] !== undefined) {
-      (filtered as Record<string, unknown>)[field] = entry[field as keyof InsightsEntry];
-    }
+    const value = entry[field as keyof InsightsEntry];
+    if (value === undefined || value === 0) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    (filtered as Record<string, unknown>)[field] = value;
   }
   return filtered;
 }
@@ -280,6 +301,12 @@ export const getInsightsGram = new Gram().tool({
       .enum(["primary", "replica"])
       .optional()
       .describe("Filter by tablet type: 'primary' or 'replica'"),
+    fields: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'rowsRead', 'rowsAffected', 'rowsReadPerReturned', 'egressBytes', 'indexes', 'maxShardQueries'])"
+      ),
     fingerprint: z
       .string()
       .optional()
@@ -330,6 +357,7 @@ export const getInsightsGram = new Gram().tool({
       const sortBy = input["sort_by"] ?? "all";
       const limit = Math.min(input["limit"] ?? 5, 20); // Cap at 20
       const tabletType = input["tablet_type"];
+      const fields = input["fields"];
       const fingerprint = input["fingerprint"];
 
       const authHeader = getAuthHeader(env);
@@ -382,7 +410,8 @@ export const getInsightsGram = new Gram().tool({
             metric,
             limit,
             authHeader,
-            tabletType
+            tabletType,
+            fields
           );
 
           for (const entry of entries) {
@@ -409,7 +438,8 @@ export const getInsightsGram = new Gram().tool({
           sortBy as SortMetric,
           limit,
           authHeader,
-          tabletType
+          tabletType,
+          fields
         );
 
         const results = entries.map(filterEntry);
