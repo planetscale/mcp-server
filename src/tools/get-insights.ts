@@ -12,6 +12,7 @@ const SORT_METRICS = [
   "rowsRead",
   "p99Latency",
   "rowsAffected",
+  "egressBytes",
 ] as const;
 
 type SortMetric = (typeof SORT_METRICS)[number];
@@ -449,7 +450,7 @@ export const getInsightsGram = new Gram().tool({
       .enum(["all", ...SORT_METRICS])
       .optional()
       .describe(
-        "Sort order: 'all' (default) aggregates 5 API calls for comprehensive view, or specify a single metric: 'totalTime', 'rowsRead', 'p99Latency', 'rowsReadPerReturned', 'rowsAffected'. Ignored when fingerprint is provided."
+        "Sort order: 'all' (default) aggregates 5 API calls for comprehensive view, or specify a single metric: 'totalTime', 'rowsRead', 'p99Latency', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes'. Ignored when fingerprint is provided."
       ),
     limit: z
       .number()
