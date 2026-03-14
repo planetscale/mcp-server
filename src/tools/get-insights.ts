@@ -37,6 +37,7 @@ const RESULT_FIELDS = [
   "max_egress_bytes",
   "max_shard_queries",
   "tables",
+  "qualified_tables",
   "index_usages",
   "keyspace",
   "last_run_at",
@@ -61,6 +62,7 @@ export interface InsightsEntry {
   max_egress_bytes?: number;
   max_shard_queries?: number;
   tables?: string[];
+  qualified_tables?: string[];
   index_usages?: unknown[];
   keyspace?: string;
   last_run_at?: string;
