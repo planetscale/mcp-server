@@ -332,6 +332,33 @@ export async function listKeyspaces(
   );
 }
 
+export interface SchemaTable {
+  name: string;
+  html: string;
+  raw: string;
+  annotated: boolean;
+}
+
+/**
+ * Get the schema for a database branch, optionally filtered to a single keyspace.
+ */
+export async function getBranchSchema(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string,
+  options?: { keyspace?: string }
+): Promise<{ data: SchemaTable[] }> {
+  const params = new URLSearchParams();
+  if (options?.keyspace) params.set("keyspace", options.keyspace);
+  const query = params.toString();
+
+  return apiRequest<{ data: SchemaTable[] }>(
+    `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/schema${query ? `?${query}` : ""}`,
+    authHeader
+  );
+}
+
 /**
  * Delete Vitess password credentials.
  */
