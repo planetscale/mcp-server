@@ -18,6 +18,12 @@ export interface Branch {
   has_replicas: boolean;
 }
 
+export interface Actor {
+  id: string;
+  display_name: string;
+  avatar_url: string;
+}
+
 export interface VitessCredentials {
   id: string;
   username: string;
@@ -292,12 +298,6 @@ export async function deleteVitessPassword(
 
 // --- Traffic Control ---
 
-export interface TrafficActor {
-  id: string;
-  display_name: string;
-  avatar_url: string;
-}
-
 export interface TrafficRuleTag {
   key_id: string;
   key: string;
@@ -311,7 +311,7 @@ export interface TrafficRule {
   tags: TrafficRuleTag[];
   fingerprint: string;
   keyspace: string;
-  actor: TrafficActor;
+  actor: Actor;
   syntax_highlighted_sql: string;
   created_at: string;
 }
@@ -326,7 +326,7 @@ export interface TrafficBudget {
   rate: number | null;
   burst: number | null;
   concurrency: number | null;
-  actor: TrafficActor;
+  actor: Actor;
   rules: TrafficRule[];
   created_at: string;
   updated_at: string;
