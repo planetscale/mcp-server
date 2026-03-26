@@ -6,6 +6,7 @@ import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
+import { trafficControlGram } from "./tools/traffic-control.ts";
 
 const gram = new Gram({
   envSchema: {
@@ -25,6 +26,7 @@ const gram = new Gram({
   .extend(executeWriteQueryGram)
   .extend(getInsightsGram)
   .extend(listClusterSizesGram)
-  .extend(searchDocumentationGram);
+  .extend(searchDocumentationGram)
+  .extend(trafficControlGram);
 
 export default gram;
