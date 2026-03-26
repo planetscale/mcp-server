@@ -74,7 +74,7 @@ export class PlanetScaleAPIError extends Error {
 async function apiRequest<T>(
   endpoint: string,
   authHeader: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
 
@@ -99,7 +99,7 @@ async function apiRequest<T>(
       throw new PlanetScaleAPIError(
         "Resource not found. Please check your organization, database, and branch names.",
         response.status,
-        details
+        details,
       );
     }
 
@@ -107,14 +107,14 @@ async function apiRequest<T>(
       throw new PlanetScaleAPIError(
         "Permission denied. Please check your API token has the required permissions.",
         response.status,
-        details
+        details,
       );
     }
 
     throw new PlanetScaleAPIError(
       `API request failed: ${response.statusText}`,
       response.status,
-      details
+      details,
     );
   }
 
@@ -132,11 +132,11 @@ async function apiRequest<T>(
 export async function getDatabase(
   organization: string,
   database: string,
-  authHeader: string
+  authHeader: string,
 ): Promise<Database> {
   return apiRequest<Database>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}`,
-    authHeader
+    authHeader,
   );
 }
 
@@ -147,11 +147,11 @@ export async function getBranch(
   organization: string,
   database: string,
   branch: string,
-  authHeader: string
+  authHeader: string,
 ): Promise<Branch> {
   return apiRequest<Branch>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`,
-    authHeader
+    authHeader,
   );
 }
 
@@ -164,7 +164,7 @@ export async function createVitessCredentials(
   branch: string,
   role: VitessRole,
   authHeader: string,
-  replica?: boolean
+  replica?: boolean,
 ): Promise<VitessCredentials> {
   const timestamp = Date.now();
   const name = `mcp-query-${timestamp}`;
@@ -189,7 +189,7 @@ export async function createVitessCredentials(
         ttl: 60, // 60 seconds TTL
         replica: replica ?? false,
       }),
-    }
+    },
   );
 
   return {
@@ -209,7 +209,7 @@ export async function createPostgresCredentials(
   database: string,
   branch: string,
   inheritedRoles: PostgresInheritedRole[],
-  authHeader: string
+  authHeader: string,
 ): Promise<PostgresCredentials> {
   const timestamp = Date.now();
   const name = `mcp-query-${timestamp}`;
@@ -234,7 +234,7 @@ export async function createPostgresCredentials(
         inherited_roles: inheritedRoles,
         ttl: 60, // 60 seconds TTL
       }),
-    }
+    },
   );
 
   return {
@@ -259,15 +259,17 @@ export async function deletePostgresRole(
   branch: string,
   roleId: string,
   authHeader: string,
-  options?: { successor?: string }
+  options?: { successor?: string },
 ): Promise<void> {
   await apiRequest<void>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/roles/${encodeURIComponent(roleId)}`,
     authHeader,
     {
       method: "DELETE",
-      body: options?.successor ? JSON.stringify({ successor: options.successor }) : undefined,
-    }
+      body: options?.successor
+        ? JSON.stringify({ successor: options.successor })
+        : undefined,
+    },
   );
 }
 
@@ -279,11 +281,208 @@ export async function deleteVitessPassword(
   database: string,
   branch: string,
   passwordId: string,
-  authHeader: string
+  authHeader: string,
 ): Promise<void> {
   await apiRequest<void>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/passwords/${encodeURIComponent(passwordId)}`,
     authHeader,
-    { method: "DELETE" }
+    { method: "DELETE" },
+  );
+}
+
+// --- Traffic Control ---
+
+export interface TrafficActor {
+  id: string;
+  display_name: string;
+  avatar_url: string;
+}
+
+export interface TrafficRuleTag {
+  key_id: string;
+  key: string;
+  value: string;
+  source: "sql" | "system";
+}
+
+export interface TrafficRule {
+  id: string;
+  kind: "match";
+  tags: TrafficRuleTag[];
+  fingerprint: string;
+  keyspace: string;
+  actor: TrafficActor;
+  syntax_highlighted_sql: string;
+  created_at: string;
+}
+
+export type TrafficBudgetMode = "enforce" | "warn" | "off";
+
+export interface TrafficBudget {
+  id: string;
+  name: string;
+  mode: TrafficBudgetMode;
+  capacity: number | null;
+  rate: number | null;
+  burst: number | null;
+  concurrency: number | null;
+  actor: TrafficActor;
+  rules: TrafficRule[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaginatedResponse<T> {
+  current_page: number;
+  next_page: number | null;
+  next_page_url: string | null;
+  prev_page: number | null;
+  prev_page_url: string | null;
+  data: T[];
+}
+
+function branchPath(
+  organization: string,
+  database: string,
+  branch: string,
+): string {
+  return `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`;
+}
+
+export async function listTrafficBudgets(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string,
+  opts?: {
+    page?: number;
+    per_page?: number;
+    period?: string;
+    fingerprint?: string;
+    created_at?: string;
+  },
+): Promise<PaginatedResponse<TrafficBudget>> {
+  const params = new URLSearchParams();
+  if (opts?.page) params.set("page", String(opts.page));
+  if (opts?.per_page) params.set("per_page", String(opts.per_page));
+  if (opts?.period) params.set("period", opts.period);
+  if (opts?.fingerprint) params.set("fingerprint", opts.fingerprint);
+  if (opts?.created_at) params.set("created_at", opts.created_at);
+  const qs = params.toString();
+  return apiRequest<PaginatedResponse<TrafficBudget>>(
+    `${branchPath(organization, database, branch)}/traffic/budgets${qs ? `?${qs}` : ""}`,
+    authHeader,
+  );
+}
+
+export async function getTrafficBudget(
+  organization: string,
+  database: string,
+  branch: string,
+  id: string,
+  authHeader: string,
+): Promise<TrafficBudget> {
+  return apiRequest<TrafficBudget>(
+    `${branchPath(organization, database, branch)}/traffic/budgets/${encodeURIComponent(id)}`,
+    authHeader,
+  );
+}
+
+export interface CreateTrafficBudgetInput {
+  name: string;
+  mode: TrafficBudgetMode;
+  capacity?: number;
+  rate?: number;
+  burst?: number;
+  concurrency?: number;
+  rules?: string[];
+}
+
+export async function createTrafficBudget(
+  organization: string,
+  database: string,
+  branch: string,
+  body: CreateTrafficBudgetInput,
+  authHeader: string,
+): Promise<TrafficBudget> {
+  return apiRequest<TrafficBudget>(
+    `${branchPath(organization, database, branch)}/traffic/budgets`,
+    authHeader,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export interface UpdateTrafficBudgetInput {
+  name?: string;
+  mode?: TrafficBudgetMode;
+  capacity?: number;
+  rate?: number;
+  burst?: number;
+  concurrency?: number;
+  rules?: string[];
+}
+
+export async function updateTrafficBudget(
+  organization: string,
+  database: string,
+  branch: string,
+  id: string,
+  body: UpdateTrafficBudgetInput,
+  authHeader: string,
+): Promise<TrafficBudget> {
+  return apiRequest<TrafficBudget>(
+    `${branchPath(organization, database, branch)}/traffic/budgets/${encodeURIComponent(id)}`,
+    authHeader,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteTrafficBudget(
+  organization: string,
+  database: string,
+  branch: string,
+  id: string,
+  authHeader: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `${branchPath(organization, database, branch)}/traffic/budgets/${encodeURIComponent(id)}`,
+    authHeader,
+    { method: "DELETE" },
+  );
+}
+
+export interface CreateTrafficRuleInput {
+  kind: "match";
+  tags?: Array<{ key: string; value: string }>;
+  fingerprint?: string;
+}
+
+export async function createTrafficRule(
+  organization: string,
+  database: string,
+  branch: string,
+  budgetId: string,
+  body: CreateTrafficRuleInput,
+  authHeader: string,
+): Promise<TrafficRule> {
+  return apiRequest<TrafficRule>(
+    `${branchPath(organization, database, branch)}/traffic/budgets/${encodeURIComponent(budgetId)}/rules`,
+    authHeader,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteTrafficRule(
+  organization: string,
+  database: string,
+  branch: string,
+  budgetId: string,
+  ruleId: string,
+  authHeader: string,
+): Promise<void> {
+  await apiRequest<void>(
+    `${branchPath(organization, database, branch)}/traffic/budgets/${encodeURIComponent(budgetId)}/rules/${encodeURIComponent(ruleId)}`,
+    authHeader,
+    { method: "DELETE" },
   );
 }
