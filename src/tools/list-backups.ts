@@ -1,9 +1,8 @@
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
+import { PlanetScaleAPIError, apiRequest } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
-
-const API_BASE = "https://api.planetscale.com/v1";
+import { formatBytes } from "./list-cluster-sizes.ts";
 
 interface BackupPolicy {
   id: string;
@@ -56,33 +55,11 @@ interface PaginatedList<T> {
   data: T[];
 }
 
-async function fetchJson<T>(url: string, authHeader: string): Promise<T> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: authHeader, Accept: "application/json" },
-  });
-
-  if (!response.ok) {
-    let details: unknown;
-    try { details = await response.json(); } catch { details = await response.text(); }
-    throw new PlanetScaleAPIError(`API request failed: ${response.statusText}`, response.status, details);
-  }
-
-  return (await response.json()) as T;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-}
-
 function formatPolicy(p: BackupPolicy) {
   const freq =
     p.frequency_unit === "hour" && p.frequency_value === 24
       ? "daily"
-      : `every ${p.frequency_value} ${p.frequency_unit}${p.frequency_value > 1 ? "s" : ""}`;
+      : `every ${p.frequency_value > 1 ? `${p.frequency_value} ${p.frequency_unit}s` : p.frequency_unit}`;
   const retention = `${p.retention_value} ${p.retention_unit}${p.retention_value > 1 ? "s" : ""}`;
 
   return {
@@ -167,8 +144,8 @@ export const listBackupsGram = new Gram().tool({
       const authHeader = getAuthHeader(env);
       const e = encodeURIComponent;
 
-      const policies = await fetchJson<PaginatedList<BackupPolicy>>(
-        `${API_BASE}/organizations/${e(organization)}/databases/${e(database)}/backup-policies`,
+      const policies = await apiRequest<PaginatedList<BackupPolicy>>(
+        `/organizations/${e(organization)}/databases/${e(database)}/backup-policies`,
         authHeader,
       );
 
@@ -192,8 +169,8 @@ export const listBackupsGram = new Gram().tool({
       const params = new URLSearchParams({ per_page: String(perPage) });
       if (input.backup_state) params.set("state", input.backup_state);
 
-      const backups = await fetchJson<PaginatedList<Backup>>(
-        `${API_BASE}/organizations/${e(organization)}/databases/${e(database)}/branches/${e(input.branch)}/backups?${params}`,
+      const backups = await apiRequest<PaginatedList<Backup>>(
+        `/organizations/${e(organization)}/databases/${e(database)}/branches/${e(input.branch)}/backups?${params}`,
         authHeader,
       );
 

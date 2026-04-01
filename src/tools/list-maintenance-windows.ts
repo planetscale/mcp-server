@@ -1,9 +1,7 @@
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
+import { PlanetScaleAPIError, apiRequest } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
-
-const API_BASE = "https://api.planetscale.com/v1";
 
 interface Actor {
   id: string;
@@ -64,21 +62,6 @@ interface PaginatedList<T> {
 }
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Every day"];
-
-async function fetchJson<T>(url: string, authHeader: string): Promise<T> {
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: authHeader, Accept: "application/json" },
-  });
-
-  if (!response.ok) {
-    let details: unknown;
-    try { details = await response.json(); } catch { details = await response.text(); }
-    throw new PlanetScaleAPIError(`API request failed: ${response.statusText}`, response.status, details);
-  }
-
-  return (await response.json()) as T;
-}
 
 function formatSchedule(s: MaintenanceSchedule) {
   const day = DAY_NAMES[s.day] ?? `day ${s.day}`;
@@ -143,8 +126,8 @@ export const listMaintenanceWindowsGram = new Gram().tool({
       const authHeader = getAuthHeader(env);
       const e = encodeURIComponent;
 
-      const schedules = await fetchJson<PaginatedList<MaintenanceSchedule>>(
-        `${API_BASE}/organizations/${e(organization)}/databases/${e(database)}/maintenance-schedules`,
+      const schedules = await apiRequest<PaginatedList<MaintenanceSchedule>>(
+        `/organizations/${e(organization)}/databases/${e(database)}/maintenance-schedules`,
         authHeader,
       );
 
@@ -167,8 +150,8 @@ export const listMaintenanceWindowsGram = new Gram().tool({
 
       const windowResults = await Promise.allSettled(
         schedules.data.map((s) =>
-          fetchJson<PaginatedList<MaintenanceWindow>>(
-            `${API_BASE}/organizations/${e(organization)}/databases/${e(database)}/maintenance-schedules/${e(s.id)}/windows?per_page=${perPage}`,
+          apiRequest<PaginatedList<MaintenanceWindow>>(
+            `/organizations/${e(organization)}/databases/${e(database)}/maintenance-schedules/${e(s.id)}/windows?per_page=${perPage}`,
             authHeader,
           ).then((res) => ({
             schedule_id: s.id,

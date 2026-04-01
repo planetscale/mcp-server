@@ -47,7 +47,7 @@ export interface TierSummary {
 /**
  * Format byte count to human-readable string (e.g. 1073741824 -> "1 GB")
  */
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));

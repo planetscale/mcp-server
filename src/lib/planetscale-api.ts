@@ -71,7 +71,7 @@ export class PlanetScaleAPIError extends Error {
   }
 }
 
-async function apiRequest<T>(
+export async function apiRequest<T>(
   endpoint: string,
   authHeader: string,
   options: RequestInit = {}
