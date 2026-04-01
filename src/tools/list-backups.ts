@@ -2,7 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { PlanetScaleAPIError, apiRequest } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
-import { formatBytes } from "./list-cluster-sizes.ts";
+import { formatBytes } from "../lib/format.ts";
 
 interface BackupPolicy {
   id: string;
