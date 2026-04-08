@@ -2,6 +2,25 @@ import { connect } from "@planetscale/database";
 import { neon, neonConfig } from "@neondatabase/serverless";
 import type { VitessCredentials, PostgresCredentials } from "./planetscale-api.ts";
 
+const QUERY_TIMEOUT_MS = 50_000;
+
+export class QueryTimeoutError extends Error {
+  constructor(executionTimeMs: number) {
+    super(
+      `Query exceeded the maximum allowed execution time of ${QUERY_TIMEOUT_MS / 1000} seconds (ran for ~${Math.round(executionTimeMs / 1000)}s). ` +
+      `Please optimize your query — consider adding indexes, reducing the result set, or breaking it into smaller queries.`
+    );
+    this.name = "QueryTimeoutError";
+  }
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "TimeoutError") return true;
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof Error && error.name === "AbortError") return true;
+  return false;
+}
+
 /**
  * Add sqlcommenter tag to identify queries from this MCP server.
  * Format follows the sqlcommenter spec: https://google.github.io/sqlcommenter/spec/
@@ -46,27 +65,33 @@ export async function executeVitessQuery(
     host: credentials.host,
     username: credentials.username,
     password: credentials.password,
+    fetch: (input, init) =>
+      fetch(input, { ...init, signal: AbortSignal.timeout(QUERY_TIMEOUT_MS) }),
   });
 
-  const taggedQuery = addSqlCommenterTag(query);
-  const result = await conn.execute(taggedQuery);
-  const executionTime = performance.now() - startTime;
+  try {
+    const taggedQuery = addSqlCommenterTag(query);
+    const result = await conn.execute(taggedQuery);
+    const executionTime = performance.now() - startTime;
 
-  // Extract column names from the result
-  const columns = result.fields?.map((f) => f.name) ?? [];
+    const columns = result.fields?.map((f) => f.name) ?? [];
+    const rows = (result.rows as Record<string, unknown>[]) ?? [];
 
-  // Handle both read and write queries
-  const rows = (result.rows as Record<string, unknown>[]) ?? [];
-
-  return {
-    success: true,
-    database_type: "vitess",
-    rows,
-    row_count: rows.length,
-    columns,
-    execution_time_ms: Math.round(executionTime),
-    rows_affected: result.rowsAffected ?? undefined,
-  };
+    return {
+      success: true,
+      database_type: "vitess",
+      rows,
+      row_count: rows.length,
+      columns,
+      execution_time_ms: Math.round(executionTime),
+      rows_affected: result.rowsAffected ?? undefined,
+    };
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new QueryTimeoutError(performance.now() - startTime);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -97,28 +122,31 @@ export async function executePostgresQuery(
 
   const connectionUrl = `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(credentials.password)}@${credentials.host}:5432/${encodeURIComponent(databaseName)}`;
 
-  const sql = neon(connectionUrl);
+  const sql = neon(connectionUrl, {
+    fetchOptions: { signal: AbortSignal.timeout(QUERY_TIMEOUT_MS) },
+  });
 
-  // Use sql.query() for raw string queries (not parameterized)
-  // Note: This is safe because we're executing user-provided SQL directly
-  // The user is responsible for the query content
-  const taggedQuery = addSqlCommenterTag(query);
-  const result = await sql.query(taggedQuery);
-  const executionTime = performance.now() - startTime;
+  try {
+    const taggedQuery = addSqlCommenterTag(query);
+    const result = await sql.query(taggedQuery);
+    const executionTime = performance.now() - startTime;
 
-  // Result is an array of row objects
-  const rows = Array.isArray(result) ? result : [];
+    const rows = Array.isArray(result) ? result : [];
+    const firstRow = rows[0];
+    const columns = firstRow !== undefined ? Object.keys(firstRow) : [];
 
-  // Extract column names from the first row
-  const firstRow = rows[0];
-  const columns = firstRow !== undefined ? Object.keys(firstRow) : [];
-
-  return {
-    success: true,
-    database_type: "postgres",
-    rows: rows as Record<string, unknown>[],
-    row_count: rows.length,
-    columns,
-    execution_time_ms: Math.round(executionTime),
-  };
+    return {
+      success: true,
+      database_type: "postgres",
+      rows: rows as Record<string, unknown>[],
+      row_count: rows.length,
+      columns,
+      execution_time_ms: Math.round(executionTime),
+    };
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new QueryTimeoutError(performance.now() - startTime);
+    }
+    throw error;
+  }
 }

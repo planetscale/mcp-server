@@ -11,6 +11,7 @@ import {
 import {
   executeVitessQuery,
   executePostgresQuery,
+  QueryTimeoutError,
 } from "../lib/query-executor.ts";
 import { validateReadQuery } from "../lib/query-validator.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
@@ -18,7 +19,7 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 export const executeReadQueryGram = new Gram().tool({
   name: "execute_read_query",
   description:
-    "Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, EXPLAIN) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. For Postgres only: optionally specify postgres_database_name when the user wants to query a non-default database.",
+    "Execute a read-only SQL query (SELECT, SHOW, DESCRIBE, EXPLAIN) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. Queries have a maximum execution time of 50 seconds — if a query exceeds this limit it will be cancelled, so ensure queries are optimized. For Postgres only: optionally specify postgres_database_name when the user wants to query a non-default database.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -125,6 +126,10 @@ export const executeReadQueryGram = new Gram().tool({
         return ctx.json(result);
       }
     } catch (error) {
+      if (error instanceof QueryTimeoutError) {
+        return ctx.text(`Error: ${error.message}`);
+      }
+
       if (error instanceof PlanetScaleAPIError) {
         return ctx.text(`Error: ${error.message} (status: ${error.statusCode})`);
       }
