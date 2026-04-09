@@ -6,6 +6,8 @@ import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
+import { getBranchKeyspacesGram } from "./tools/get-branch-keyspaces.ts";
+import { getBranchTablesGram, getTableSchemaGram } from "./tools/get-branch-schema.ts";
 
 const gram = new Gram({
   envSchema: {
@@ -25,6 +27,9 @@ const gram = new Gram({
   .extend(executeWriteQueryGram)
   .extend(getInsightsGram)
   .extend(listClusterSizesGram)
-  .extend(searchDocumentationGram);
+  .extend(searchDocumentationGram)
+  .extend(getBranchKeyspacesGram)
+  .extend(getBranchTablesGram)
+  .extend(getTableSchemaGram);
 
 export default gram;
