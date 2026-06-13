@@ -86,11 +86,42 @@ export interface SelectedQueryEntry {
   total_duration_millis: number;
   error_message: string | null;
   shard_queries: number;
+  // Whether a recorded execution plan exists for this individual query
+  // (Postgres only). Fetch the full plan via the `id` detail mode.
+  explain_available?: boolean;
   tags: Array<{ name: string; value: string }>;
 }
 
 export interface SelectedQueryResponse {
   data: SelectedQueryEntry[];
+}
+
+// A single query execution's full detail, including the recorded Postgres
+// EXPLAIN plan. Returned by the `/insights/queries/:id` endpoint as a bare
+// object (not wrapped in a { data: [...] } envelope).
+export interface QueryDetailEntry {
+  id: string;
+  fingerprint: string;
+  normalized_sql: string;
+  started_at: string;
+  statement_type: string;
+  keyspace: string;
+  tables: string[];
+  username?: string;
+  remote_address?: string;
+  shard_queries: number;
+  rows_read: number;
+  rows_affected: number;
+  rows_returned: number;
+  total_duration_millis: number;
+  error_message: string | null;
+  explainable: boolean;
+  explain_available: boolean;
+  truncated: boolean;
+  explain_plan: string | null;
+  raw_sql?: string;
+  raw_sql_abbreviation?: string;
+  tags: Array<{ name: string; value: string }>;
 }
 
 export interface FingerprintSummary {
@@ -146,6 +177,35 @@ const SELECTED_QUERY_FIELDS = [
   "total_duration_millis",
   "error_message",
   "shard_queries",
+  "explain_available",
+  "tags",
+] as const;
+
+// Fields to include in single-execution detail results. Excludes HTML
+// (syntax_highlighted_*), password, and created_at/updated_at (duplicates of
+// started_at), but keeps the recorded explain_plan.
+const SELECTED_QUERY_DETAIL_FIELDS = [
+  "id",
+  "fingerprint",
+  "normalized_sql",
+  "started_at",
+  "statement_type",
+  "keyspace",
+  "tables",
+  "username",
+  "remote_address",
+  "shard_queries",
+  "rows_read",
+  "rows_affected",
+  "rows_returned",
+  "total_duration_millis",
+  "error_message",
+  "explainable",
+  "explain_available",
+  "truncated",
+  "explain_plan",
+  "raw_sql",
+  "raw_sql_abbreviation",
   "tags",
 ] as const;
 
@@ -258,6 +318,23 @@ function filterSelectedEntry(
       (filtered as Record<string, unknown>)[field] =
         entry[field as keyof SelectedQueryEntry];
     }
+  }
+  return filtered;
+}
+
+/**
+ * Filter a single-execution detail entry to only include useful fields
+ * (strip HTML and password). Keeps `explain_plan` even though it may be large.
+ */
+function filterQueryDetail(
+  entry: QueryDetailEntry
+): Partial<QueryDetailEntry> {
+  const filtered: Partial<QueryDetailEntry> = {};
+  for (const field of SELECTED_QUERY_DETAIL_FIELDS) {
+    const value = entry[field as keyof QueryDetailEntry];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    (filtered as Record<string, unknown>)[field] = value;
   }
   return filtered;
 }
@@ -457,10 +534,71 @@ async function fetchSelectedQueries(
   return data.data || [];
 }
 
+/**
+ * Fetch the full detail for a single query execution by its `id` (the value
+ * returned for each execution in fingerprint mode). Includes the recorded
+ * Postgres EXPLAIN plan when available. The endpoint returns a bare object,
+ * not a { data: [...] } list envelope.
+ */
+async function fetchQueryDetail(
+  organization: string,
+  database: string,
+  branch: string,
+  id: string,
+  authHeader: string
+): Promise<QueryDetailEntry> {
+  const url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/insights/queries/${encodeURIComponent(id)}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+
+    if (response.status === 404) {
+      throw new PlanetScaleAPIError(
+        "Query execution not found. The `id` must come from the `executions` returned by a fingerprint-mode insights call, and individual executions expire after their retention window.",
+        response.status,
+        details
+      );
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new PlanetScaleAPIError(
+        "Permission denied. Please check your API token has the required permissions.",
+        response.status,
+        details
+      );
+    }
+
+    throw new PlanetScaleAPIError(
+      `Failed to fetch query detail: ${response.statusText}`,
+      response.status,
+      details
+    );
+  }
+
+  return (await response.json()) as QueryDetailEntry;
+}
+
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds.",
+    "Get query performance insights for a PlanetScale database branch. Has three drill-down modes: " +
+    "(1) DISCOVERY (default, no fingerprint/id): aggregates the top query patterns across 5 metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected), or sorts by a single metric. Supports filtering by tablet type (primary/replica) and search. " +
+    "(2) FINGERPRINT (`fingerprint` + `keyspace` from a discovery result): returns the aggregated summary stats for that pattern PLUS its individual executions. Each execution includes an `id`, when it ran (`started_at`), how long it took (`total_duration_millis`), and `explain_available` indicating whether a recorded Postgres execution (EXPLAIN) plan exists for it. The response's `explain_plans_available` flag is true if any execution has a plan. " +
+    "(3) EXECUTION DETAIL (`id` from a fingerprint-mode execution): returns the full detail for one individual execution, including the recorded Postgres `explain_plan` text when available, plus timing, row counts, and (when enabled) the raw SQL. `id` takes precedence over `fingerprint`/`sort_by`. " +
+    "Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. Explain plans are only recorded for Postgres databases.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -508,6 +646,12 @@ export const getInsightsGram = new Gram().tool({
       .optional()
       .describe(
         "Query fingerprint hash to drill down into a specific query pattern. Use the `fingerprint` value from an initial insights call. Always include `keyspace` (also from the initial results) to get summary data."
+      ),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "Individual query execution `id` to fetch full execution detail, including the recorded Postgres explain_plan when available. Use an `id` from the `executions` returned in fingerprint mode. When provided, this takes precedence over `fingerprint` and `sort_by`."
       ),
     keyspace: z
       .string()
@@ -573,6 +717,24 @@ export const getInsightsGram = new Gram().tool({
 
       const authHeader = getAuthHeader(env);
 
+      // Execution detail mode: fetch one individual query by id, including the
+      // recorded Postgres explain plan. Takes precedence over fingerprint/sort.
+      const id = input["id"];
+      if (id) {
+        const detail = await fetchQueryDetail(
+          organization,
+          database,
+          branch,
+          id,
+          authHeader
+        );
+        return ctx.json({
+          mode: "query_detail",
+          id,
+          query: filterQueryDetail(detail),
+        });
+      }
+
       // Fingerprint mode: fetch summary stats + individual executions
       if (fingerprint) {
         const now = new Date();
@@ -614,6 +776,9 @@ export const getInsightsGram = new Gram().tool({
         const entries =
           entriesResult.status === "fulfilled" ? entriesResult.value : [];
         const executions = entries.map(filterSelectedEntry);
+        const explainPlansAvailable = executions.some(
+          (e) => e.explain_available === true
+        );
         return ctx.json({
           mode: "fingerprint",
           fingerprint,
@@ -621,6 +786,9 @@ export const getInsightsGram = new Gram().tool({
           from,
           to,
           summary: summary ? filterSummary(summary) : null,
+          // True if any individual execution has a recorded Postgres explain
+          // plan. Fetch it by calling this tool again with that execution's `id`.
+          explain_plans_available: explainPlansAvailable,
           executions: {
             total: executions.length,
             queries: executions,
