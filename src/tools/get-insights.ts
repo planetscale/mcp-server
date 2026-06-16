@@ -5,8 +5,25 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
 
-// Available sort metrics for insights
+// Supported sort metrics for single-sort insights requests.
 const SORT_METRICS = [
+  "count",
+  "percentTime",
+  "totalTime",
+  "cpuTime",
+  "p50Latency",
+  "p99Latency",
+  "rowsRead",
+  "rowsReadPerQuery",
+  "rowsReadPerReturned",
+  "rowsAffected",
+  "egressBytes",
+  "egressBytesPerQuery",
+  "maxEgressBytes",
+] as const;
+
+// Curated metrics used by aggregate mode to keep the default request lightweight.
+const AGGREGATE_SORT_METRICS = [
   "totalTime",
   "rowsReadPerReturned",
   "rowsRead",
@@ -25,7 +42,9 @@ const RESULT_FIELDS = [
   "query_count",
   "sum_total_duration_millis",
   "sum_total_duration_percent",
+  "sum_cpu_duration_millis",
   "rows_read_per_returned",
+  "rows_read_per_query",
   "sum_rows_read",
   "sum_rows_returned",
   "sum_rows_affected",
@@ -50,7 +69,9 @@ export interface InsightsEntry {
   query_count?: number;
   sum_total_duration_millis?: number;
   sum_total_duration_percent?: number;
+  sum_cpu_duration_millis?: number;
   rows_read_per_returned?: number;
+  rows_read_per_query?: number;
   sum_rows_read?: number;
   sum_rows_returned?: number;
   sum_rows_affected?: number;
@@ -112,6 +133,7 @@ export interface FingerprintSummary {
   rows_read_per_query: number;
   sum_total_duration_millis: number;
   sum_total_duration_percent: number;
+  sum_cpu_duration_millis: number;
   time_per_query: number;
   p50_latency: number;
   p99_latency: number;
@@ -281,6 +303,7 @@ const SUMMARY_FIELDS = [
   "rows_read_per_query",
   "sum_total_duration_millis",
   "sum_total_duration_percent",
+  "sum_cpu_duration_millis",
   "time_per_query",
   "p50_latency",
   "p99_latency",
@@ -460,7 +483,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across 5 different metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -469,7 +492,7 @@ export const getInsightsGram = new Gram().tool({
       .enum(["all", ...SORT_METRICS])
       .optional()
       .describe(
-        "Sort order: 'all' (default) aggregates 5 API calls for comprehensive view, or specify a single metric: 'totalTime', 'rowsRead', 'p99Latency', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes'. Ignored when fingerprint is provided."
+        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes'. 'cpuTime' is useful only when CPU timing data is available. Ignored when fingerprint is provided."
       ),
     limit: z
       .number()
@@ -483,7 +506,7 @@ export const getInsightsGram = new Gram().tool({
       .array(z.string())
       .optional()
       .describe(
-        "Request specific metric fields from the API (e.g. ['query', 'count', 'rowsRead', 'rowsAffected', 'rowsReadPerReturned', 'egressBytes', 'indexes', 'maxShardQueries']). Ignored when fingerprint is provided."
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'indexes', 'maxShardQueries']). Ignored when fingerprint is provided."
       ),
     query: z
       .string()
@@ -633,10 +656,10 @@ export const getInsightsGram = new Gram().tool({
       const period = input["period"];
 
       if (sortBy === "all") {
-        // Aggregate mode: fetch from all 5 metrics and deduplicate
+        // Aggregate mode: fetch from curated metrics and deduplicate
         const uniqueEntries = new Map<string, Partial<InsightsEntry>>();
 
-        for (const metric of SORT_METRICS) {
+        for (const metric of AGGREGATE_SORT_METRICS) {
           const entries = await fetchInsights(
             organization,
             database,
@@ -662,7 +685,7 @@ export const getInsightsGram = new Gram().tool({
         const results = Array.from(uniqueEntries.values());
         return ctx.json({
           mode: "aggregated",
-          metrics_queried: SORT_METRICS,
+          metrics_queried: AGGREGATE_SORT_METRICS,
           limit_per_metric: limit,
           total_unique_queries: results.length,
           queries: results,
