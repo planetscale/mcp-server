@@ -34,6 +34,10 @@ const AGGREGATE_SORT_METRICS = [
 
 type SortMetric = (typeof SORT_METRICS)[number];
 
+const CAPABILITY_GATED_SORT_METRICS = ["cpuTime", "maxEgressBytes"] as const;
+
+type CapabilityGatedSortMetric = (typeof CAPABILITY_GATED_SORT_METRICS)[number];
+
 // Fields to include in the result for token efficiency
 const RESULT_FIELDS = [
   "id",
@@ -91,6 +95,25 @@ export interface InsightsEntry {
 
 export interface InsightsResponse {
   data: InsightsEntry[];
+}
+
+interface BranchMetadata {
+  kind?: string;
+  parameters?: {
+    pgconf?: Record<string, string | undefined>;
+  };
+  insights_cpu_timing?: boolean;
+  insights_io_timing?: boolean;
+  insights_egress_bytes?: boolean;
+  insights_max_egress_bytes?: boolean;
+}
+
+export interface BranchCapabilities {
+  kind: string | null;
+  cpu_timing: boolean;
+  io_timing: boolean;
+  egress_bytes: boolean;
+  max_egress_bytes: boolean;
 }
 
 export interface SelectedQueryEntry {
@@ -170,6 +193,97 @@ const SELECTED_QUERY_FIELDS = [
   "shard_queries",
   "tags",
 ] as const;
+
+function isCapabilityGatedSortMetric(
+  sortBy: SortMetric
+): sortBy is CapabilityGatedSortMetric {
+  return (CAPABILITY_GATED_SORT_METRICS as readonly string[]).includes(sortBy);
+}
+
+/**
+ * Fetch branch metadata needed to decide which insights metrics are meaningful.
+ */
+async function fetchBranchMetadata(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string
+): Promise<BranchMetadata> {
+  const url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: authHeader,
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    let details: unknown;
+    try {
+      details = await response.json();
+    } catch {
+      details = await response.text();
+    }
+
+    if (response.status === 404) {
+      throw new PlanetScaleAPIError(
+        "Branch not found. Please check your organization, database, and branch names.",
+        response.status,
+        details
+      );
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new PlanetScaleAPIError(
+        "Permission denied. Please check your API token has the required permissions.",
+        response.status,
+        details
+      );
+    }
+
+    throw new PlanetScaleAPIError(
+      `Failed to fetch branch metadata: ${response.statusText}`,
+      response.status,
+      details
+    );
+  }
+
+  return (await response.json()) as BranchMetadata;
+}
+
+function getBranchCapabilities(branch: BranchMetadata): BranchCapabilities {
+  const kind = branch.kind ?? null;
+  const trackIoTiming = branch.parameters?.pgconf?.["track_io_timing"] === "on";
+
+  return {
+    kind,
+    cpu_timing: branch.insights_cpu_timing ?? kind === "postgresql",
+    io_timing:
+      branch.insights_io_timing ?? (kind === "postgresql" && trackIoTiming),
+    egress_bytes: branch.insights_egress_bytes ?? true,
+    max_egress_bytes: branch.insights_max_egress_bytes ?? kind === "mysql",
+  };
+}
+
+function formatBranchKind(kind: string | null): string {
+  return kind ?? "unknown";
+}
+
+function unsupportedSortMessage(
+  sortBy: CapabilityGatedSortMetric,
+  capabilities: BranchCapabilities
+): string | null {
+  switch (sortBy) {
+    case "cpuTime":
+      if (capabilities.cpu_timing) return null;
+      return `cpuTime is only available for Postgres branches. This branch is ${formatBranchKind(capabilities.kind)}; use totalTime, count, rowsRead, rowsReadPerReturned, or egressBytes instead.`;
+    case "maxEgressBytes":
+      if (capabilities.max_egress_bytes) return null;
+      return `maxEgressBytes is only available for MySQL branches. This branch is ${formatBranchKind(capabilities.kind)}; use egressBytes or egressBytesPerQuery instead.`;
+  }
+}
 
 /**
  * Fetch insights from the PlanetScale API with a specific sort order
@@ -483,7 +597,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes is available for MySQL branches only.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -492,7 +606,7 @@ export const getInsightsGram = new Gram().tool({
       .enum(["all", ...SORT_METRICS])
       .optional()
       .describe(
-        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes'. 'cpuTime' is useful only when CPU timing data is available. Ignored when fingerprint is provided."
+        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes'. 'cpuTime' is Postgres-only; 'maxEgressBytes' is MySQL-only. Ignored when fingerprint is provided."
       ),
     limit: z
       .number()
@@ -506,7 +620,7 @@ export const getInsightsGram = new Gram().tool({
       .array(z.string())
       .optional()
       .describe(
-        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'indexes', 'maxShardQueries']). Ignored when fingerprint is provided."
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'indexes', 'maxShardQueries']). 'cpuTime' is Postgres-only; 'maxEgressBytes' is MySQL-only. Ignored when fingerprint is provided."
       ),
     query: z
       .string()
@@ -595,6 +709,7 @@ export const getInsightsGram = new Gram().tool({
       const fingerprint = input["fingerprint"];
 
       const authHeader = getAuthHeader(env);
+      let branchCapabilities: BranchCapabilities | undefined;
 
       // Fingerprint mode: fetch summary stats + individual executions
       if (fingerprint) {
@@ -655,6 +770,21 @@ export const getInsightsGram = new Gram().tool({
       const to = input["to"];
       const period = input["period"];
 
+      if (sortBy !== "all" && isCapabilityGatedSortMetric(sortBy)) {
+        const branchMetadata = await fetchBranchMetadata(
+          organization,
+          database,
+          branch,
+          authHeader
+        );
+        branchCapabilities = getBranchCapabilities(branchMetadata);
+
+        const message = unsupportedSortMessage(sortBy, branchCapabilities);
+        if (message) {
+          return ctx.text(`Error: ${message}`);
+        }
+      }
+
       if (sortBy === "all") {
         // Aggregate mode: fetch from curated metrics and deduplicate
         const uniqueEntries = new Map<string, Partial<InsightsEntry>>();
@@ -712,6 +842,9 @@ export const getInsightsGram = new Gram().tool({
           mode: "single_metric",
           sort_by: sortBy,
           limit,
+          ...(branchCapabilities
+            ? { branch_capabilities: branchCapabilities }
+            : {}),
           total_queries: results.length,
           queries: results,
         });
