@@ -112,7 +112,8 @@ export const executeReadQueryGram = new Gram().tool({
         const result = await executePostgresQuery(
           credentials,
           query,
-          postgresDatabaseName
+          postgresDatabaseName,
+          { warnOnRls: true }
         );
 
         // Delete the role credentials after query execution

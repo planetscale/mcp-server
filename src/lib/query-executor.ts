@@ -111,6 +111,10 @@ interface PostgresRlsRelation {
   force_row_security: boolean;
 }
 
+interface PostgresQueryOptions {
+  warnOnRls?: boolean;
+}
+
 function isZeroLikeValue(value: unknown): boolean {
   if (typeof value === "number") return value === 0;
   if (typeof value === "bigint") return value === 0n;
@@ -202,11 +206,13 @@ async function buildPostgresRlsWarnings(
  * @param credentials - Short-lived Postgres credentials from the PlanetScale API.
  * @param query - SQL query to execute.
  * @param databaseNameOverride - Optional. When set, connect to this database instead of credentials.database_name. Use when the user has created additional databases in the same cluster.
+ * @param options - Optional execution behavior. RLS warnings should only be enabled for read-query credentials.
  */
 export async function executePostgresQuery(
   credentials: PostgresCredentials,
   query: string,
-  databaseNameOverride?: string
+  databaseNameOverride?: string,
+  options: PostgresQueryOptions = {}
 ): Promise<QueryResult> {
   const startTime = performance.now();
 
@@ -237,12 +243,14 @@ export async function executePostgresQuery(
     const rows = Array.isArray(result) ? result : [];
     const firstRow = rows[0];
     const columns = firstRow !== undefined ? Object.keys(firstRow) : [];
-    const warnings = await buildPostgresRlsWarnings(
-      sql,
-      query,
-      rows as Record<string, unknown>[],
-      columns
-    );
+    const warnings = options.warnOnRls
+      ? await buildPostgresRlsWarnings(
+          sql,
+          query,
+          rows as Record<string, unknown>[],
+          columns
+        )
+      : undefined;
 
     return {
       success: true,
