@@ -1,8 +1,9 @@
 import { connect } from "@planetscale/database";
-import { neon, neonConfig } from "@neondatabase/serverless";
+import { neon, neonConfig, type NeonQueryFunction } from "@neondatabase/serverless";
 import type { VitessCredentials, PostgresCredentials } from "./planetscale-api.ts";
 
 const QUERY_TIMEOUT_MS = 50_000;
+const MAX_RLS_WARNING_RELATIONS = 10;
 
 export class QueryTimeoutError extends Error {
   constructor(executionTimeMs: number) {
@@ -50,6 +51,13 @@ export interface QueryResult {
   columns: string[];
   execution_time_ms: number;
   rows_affected?: number;
+  warnings?: QueryWarning[];
+}
+
+export interface QueryWarning {
+  code: "postgres_rls_active";
+  message: string;
+  relations?: string[];
 }
 
 /**
@@ -94,6 +102,101 @@ export async function executeVitessQuery(
   }
 }
 
+type PostgresSql = NeonQueryFunction<false, false>;
+
+interface PostgresRlsRelation {
+  schema_name: string;
+  relation_name: string;
+  row_security_enabled: boolean;
+  force_row_security: boolean;
+}
+
+function isZeroLikeValue(value: unknown): boolean {
+  if (typeof value === "number") return value === 0;
+  if (typeof value === "bigint") return value === 0n;
+  if (typeof value === "string") return value === "0";
+  return false;
+}
+
+function isZeroCountResult(
+  query: string,
+  rows: Record<string, unknown>[],
+  columns: string[]
+): boolean {
+  if (!/\bcount\s*\(/i.test(query)) return false;
+  if (rows.length !== 1 || columns.length === 0) return false;
+
+  const row = rows[0];
+  if (row === undefined) return false;
+
+  return columns.every((column) => isZeroLikeValue(row[column]));
+}
+
+async function getActivePostgresRlsRelations(
+  sql: PostgresSql
+): Promise<PostgresRlsRelation[]> {
+  const result = await sql.query(`
+    SELECT
+      n.nspname AS schema_name,
+      c.relname AS relation_name,
+      c.relrowsecurity AS row_security_enabled,
+      c.relforcerowsecurity AS force_row_security
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p')
+      AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND pg_catalog.has_table_privilege(c.oid, 'SELECT')
+      AND pg_catalog.row_security_active(c.oid)
+    ORDER BY n.nspname, c.relname
+    LIMIT ${MAX_RLS_WARNING_RELATIONS + 1};
+  `);
+
+  return (Array.isArray(result) ? result : []) as PostgresRlsRelation[];
+}
+
+async function buildPostgresRlsWarnings(
+  sql: PostgresSql,
+  query: string,
+  rows: Record<string, unknown>[],
+  columns: string[]
+): Promise<QueryWarning[] | undefined> {
+  if (rows.length > 0 && !isZeroCountResult(query, rows, columns)) {
+    return undefined;
+  }
+
+  let relations: PostgresRlsRelation[];
+  try {
+    relations = await getActivePostgresRlsRelations(sql);
+  } catch {
+    return undefined;
+  }
+
+  if (relations.length === 0) {
+    return undefined;
+  }
+
+  const visibleRelations = relations.slice(0, MAX_RLS_WARNING_RELATIONS);
+  const relationNames = visibleRelations.map(
+    (relation) => `${relation.schema_name}.${relation.relation_name}`
+  );
+  const moreRelationsCount = relations.length - visibleRelations.length;
+  const listedRelations = relationNames.join(", ");
+  const relationSummary =
+    moreRelationsCount > 0
+      ? `${listedRelations}, and ${moreRelationsCount} more relation${moreRelationsCount === 1 ? "" : "s"}`
+      : listedRelations;
+
+  return [
+    {
+      code: "postgres_rls_active",
+      message:
+        `Postgres row-level security is active for ${relationSummary} under this MCP role. ` +
+        "The MCP role has pg_read_all_data but does not bypass RLS, so returned rows may be filtered; a zero-row or zero-count result does not necessarily mean the underlying tables are empty.",
+      relations: relationNames,
+    },
+  ];
+}
+
 /**
  * Execute a query against a Postgres database using @neondatabase/serverless.
  * @param credentials - Short-lived Postgres credentials from the PlanetScale API.
@@ -134,6 +237,12 @@ export async function executePostgresQuery(
     const rows = Array.isArray(result) ? result : [];
     const firstRow = rows[0];
     const columns = firstRow !== undefined ? Object.keys(firstRow) : [];
+    const warnings = await buildPostgresRlsWarnings(
+      sql,
+      query,
+      rows as Record<string, unknown>[],
+      columns
+    );
 
     return {
       success: true,
@@ -142,6 +251,7 @@ export async function executePostgresQuery(
       row_count: rows.length,
       columns,
       execution_time_ms: Math.round(executionTime),
+      ...(warnings !== undefined ? { warnings } : {}),
     };
   } catch (error) {
     if (isTimeoutError(error)) {
