@@ -122,6 +122,10 @@ function isZeroLikeValue(value: unknown): boolean {
   return false;
 }
 
+function isNullLikeAggregateValue(value: unknown): boolean {
+  return value === null || isZeroLikeValue(value);
+}
+
 function isZeroCountResult(
   query: string,
   rows: Record<string, unknown>[],
@@ -133,7 +137,11 @@ function isZeroCountResult(
   const row = rows[0];
   if (row === undefined) return false;
 
-  return columns.every((column) => isZeroLikeValue(row[column]));
+  const values = columns.map((column) => row[column]);
+  return (
+    values.some((value) => isZeroLikeValue(value)) &&
+    values.every((value) => isNullLikeAggregateValue(value))
+  );
 }
 
 async function getActivePostgresRlsRelations(
