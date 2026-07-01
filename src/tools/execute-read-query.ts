@@ -31,6 +31,12 @@ export const executeReadQueryGram = new Gram().tool({
       .describe(
         "Postgres only: target database name to connect to. Use when the user has created additional databases in the same PlanetScale Postgres cluster (e.g. via CREATE DATABASE). Omit to use the default database for the branch."
       ),
+    use_replica: z
+      .boolean()
+      .optional()
+      .describe(
+        "Route read queries to a read replica when the branch has replicas. Defaults to true. Set false to force the primary."
+      ),
   },
   async execute(ctx, input) {
     try {
@@ -69,7 +75,9 @@ export const executeReadQueryGram = new Gram().tool({
 
       // Get branch info to determine database type and replica availability
       const branchInfo = await getBranch(organization, database, branch, authHeader);
-      const useReplica = branchInfo.has_replicas;
+      // Route to a replica only when the caller allows it and the branch has replicas
+      const useReplicaParam = input["use_replica"] ?? true;
+      const useReplica = useReplicaParam && branchInfo.has_replicas;
 
       if (branchInfo.kind === "mysql") {
         // Vitess database - create password with reader role
