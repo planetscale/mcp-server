@@ -33,6 +33,17 @@ export interface ArchitectureRate {
   replica_rate: string | null;
 }
 
+export interface TierVariant {
+  name: string;
+  provider: string;
+  provider_instance_type: string | null;
+  metal: boolean;
+  storage: string | null;
+  architecture: string;
+  rate: string | null;
+  replica_rate: string | null;
+}
+
 export interface TierSummary {
   name: string;
   type: "autoscaling" | "metal";
@@ -42,6 +53,7 @@ export interface TierSummary {
   rates: ArchitectureRate[];
   storage?: string;
   storage_options?: string[];
+  variants: TierVariant[];
 }
 
 /**
@@ -144,7 +156,8 @@ async function fetchClusterSizeSkus(
  */
 function buildTierSummaries(
   skus: ClusterSizeSkuRaw[],
-  typeFilter: "autoscaling" | "metal" | undefined
+  typeFilter: "autoscaling" | "metal" | undefined,
+  providerFilter: "AWS" | "GCP" | undefined
 ): TierSummary[] {
   const byTier = new Map<
     string,
@@ -156,6 +169,7 @@ function buildTierSummaries(
       storageBytes: Set<number>;
       ratesByArch: Map<string, { rate: number | null; replicaRate: number | null }>;
       metal: boolean;
+      variants: TierVariant[];
     }
   >();
 
@@ -164,6 +178,7 @@ function buildTierSummaries(
     const isMetal = sku.metal;
     if (typeFilter === "autoscaling" && isMetal) continue;
     if (typeFilter === "metal" && !isMetal) continue;
+    if (providerFilter && sku.provider !== providerFilter) continue;
 
     const key = sku.display_name;
     let tier = byTier.get(key);
@@ -176,6 +191,7 @@ function buildTierSummaries(
         storageBytes: new Set<number>(),
         ratesByArch: new Map<string, { rate: number | null; replicaRate: number | null }>(),
         metal: isMetal,
+        variants: [],
       };
       byTier.set(key, tier);
     }
@@ -194,6 +210,17 @@ function buildTierSummaries(
       if (sku.rate != null && archRates.rate == null) archRates.rate = sku.rate;
       if (sku.replica_rate != null && archRates.replicaRate == null) archRates.replicaRate = sku.replica_rate;
     }
+
+    tier.variants.push({
+      name: sku.name,
+      provider: sku.provider,
+      provider_instance_type: sku.provider_instance_type,
+      metal: isMetal,
+      storage: isMetal && sku.storage != null && sku.storage > 0 ? formatBytes(sku.storage) : null,
+      architecture: arch,
+      rate: formatRate(sku.rate),
+      replica_rate: formatRate(sku.replica_rate),
+    });
   }
 
   const result: TierSummary[] = [];
@@ -225,6 +252,7 @@ function buildTierSummaries(
       ram: tier.ram,
       ...(providers.length > 0 ? { providers } : {}),
       rates,
+      variants: tier.variants,
     };
     if (tier.metal && tier.storageBytes.size > 0) {
       summary.storage_options = Array.from(tier.storageBytes)
@@ -255,6 +283,10 @@ export const listClusterSizesGram = new Gram().tool({
       .describe(
         "Filter to only autoscaling (PS-*, network-backed) or metal (M-*, local storage) sizes"
       ),
+    provider: z
+      .enum(["AWS", "GCP"])
+      .optional()
+      .describe("Filter to sizes available on a specific cloud provider"),
   },
   async execute(ctx, input) {
     try {
@@ -275,10 +307,11 @@ export const listClusterSizesGram = new Gram().tool({
 
       const engine = (input["engine"] ?? "mysql") as "mysql" | "postgresql";
       const typeFilter = input["type"] as "autoscaling" | "metal" | undefined;
+      const providerFilter = input["provider"] as "AWS" | "GCP" | undefined;
       const authHeader = getAuthHeader(env);
 
       const skus = await fetchClusterSizeSkus(organization, engine, authHeader);
-      const tiers = buildTierSummaries(skus, typeFilter);
+      const tiers = buildTierSummaries(skus, typeFilter, providerFilter);
 
       return ctx.json({
         organization,
