@@ -179,27 +179,3 @@ export function validateWriteQuery(
 
   return { allowed: true, requiresConfirmation: false };
 }
-
-/**
- * Validates that a query is read-only (SELECT, SHOW, DESCRIBE, EXPLAIN)
- */
-export function validateReadQuery(query: string): ValidationResult {
-  const normalized = query.trim().toUpperCase();
-
-  // Allow read-only operations
-  const readOnlyPrefixes = ["SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"];
-  const isReadOnly = readOnlyPrefixes.some((prefix) =>
-    normalized.startsWith(prefix)
-  );
-
-  if (!isReadOnly) {
-    return {
-      allowed: false,
-      requiresConfirmation: false,
-      reason:
-        "Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed with execute_read_query. Use execute_write_query for INSERT, UPDATE, or DELETE operations.",
-    };
-  }
-
-  return { allowed: true, requiresConfirmation: false };
-}
