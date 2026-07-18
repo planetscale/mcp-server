@@ -152,22 +152,6 @@ export const searchDocumentationGram = new Gram().tool({
     "Search across the PlanetScale knowledge base to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages.",
   inputSchema: {
     query: z.string().describe("Search query for PlanetScale docs"),
-    version: z
-      .string()
-      .optional()
-      .describe("Optional version filter (e.g., 'v0.7')"),
-    language: z
-      .string()
-      .optional()
-      .describe("Optional language filter (e.g., 'en', 'es')"),
-    api_reference_only: z
-      .boolean()
-      .optional()
-      .describe("Only return API reference docs"),
-    code_only: z
-      .boolean()
-      .optional()
-      .describe("Only return code snippets"),
   },
   async execute(ctx, input) {
     const env =
@@ -185,13 +169,9 @@ export const searchDocumentationGram = new Gram().tool({
       await client.connect(transport);
 
       const result = await client.callTool({
-        name: "SearchPlanetScale",
+        name: "search_planet_scale",
         arguments: {
           query: input.query,
-          version: input.version,
-          language: input.language,
-          apiReferenceOnly: input.api_reference_only,
-          codeOnly: input.code_only,
         },
       });
 
