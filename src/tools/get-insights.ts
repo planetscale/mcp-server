@@ -20,6 +20,9 @@ const SORT_METRICS = [
   "egressBytes",
   "egressBytesPerQuery",
   "maxEgressBytes",
+  "ingressBytes",
+  "ingressBytesPerQuery",
+  "maxIngressBytes",
 ] as const;
 
 // Curated metrics used by aggregate mode to keep the default request lightweight.
@@ -34,7 +37,13 @@ const AGGREGATE_SORT_METRICS = [
 
 type SortMetric = (typeof SORT_METRICS)[number];
 
-const CAPABILITY_GATED_SORT_METRICS = ["cpuTime", "maxEgressBytes"] as const;
+const CAPABILITY_GATED_SORT_METRICS = [
+  "cpuTime",
+  "maxEgressBytes",
+  "ingressBytes",
+  "ingressBytesPerQuery",
+  "maxIngressBytes",
+] as const;
 
 type CapabilityGatedSortMetric = (typeof CAPABILITY_GATED_SORT_METRICS)[number];
 
@@ -58,6 +67,9 @@ const RESULT_FIELDS = [
   "egress_bytes",
   "egress_bytes_per_query",
   "max_egress_bytes",
+  "ingress_bytes",
+  "ingress_bytes_per_query",
+  "max_ingress_bytes",
   "max_shard_queries",
   "tables",
   "qualified_tables",
@@ -85,6 +97,9 @@ export interface InsightsEntry {
   egress_bytes?: number;
   egress_bytes_per_query?: number;
   max_egress_bytes?: number;
+  ingress_bytes?: number;
+  ingress_bytes_per_query?: number;
+  max_ingress_bytes?: number;
   max_shard_queries?: number;
   tables?: string[];
   qualified_tables?: string[];
@@ -106,6 +121,7 @@ interface BranchMetadata {
   insights_io_timing?: boolean;
   insights_egress_bytes?: boolean;
   insights_max_egress_bytes?: boolean;
+  insights_ingress_bytes?: boolean;
 }
 
 export interface BranchCapabilities {
@@ -114,6 +130,7 @@ export interface BranchCapabilities {
   io_timing: boolean;
   egress_bytes: boolean;
   max_egress_bytes: boolean;
+  ingress_bytes: boolean;
 }
 
 export interface SelectedQueryEntry {
@@ -164,6 +181,9 @@ export interface FingerprintSummary {
   egress_bytes: number;
   egress_bytes_per_query: number;
   max_egress_bytes: number;
+  ingress_bytes: number;
+  ingress_bytes_per_query: number;
+  max_ingress_bytes: number;
   max_shard_queries: number;
   last_run_at: string | null;
   slugs: Array<{
@@ -264,6 +284,8 @@ function getBranchCapabilities(branch: BranchMetadata): BranchCapabilities {
       branch.insights_io_timing ?? (kind === "postgresql" && trackIoTiming),
     egress_bytes: branch.insights_egress_bytes ?? true,
     max_egress_bytes: branch.insights_max_egress_bytes ?? kind === "mysql",
+    // Currently Vitess/MySQL only; Postgres returns zeros until horizon ingress lands.
+    ingress_bytes: branch.insights_ingress_bytes ?? kind === "mysql",
   };
 }
 
@@ -282,6 +304,11 @@ function unsupportedSortMessage(
     case "maxEgressBytes":
       if (capabilities.max_egress_bytes) return null;
       return `maxEgressBytes is only available for MySQL branches. This branch is ${formatBranchKind(capabilities.kind)}; use egressBytes or egressBytesPerQuery instead.`;
+    case "ingressBytes":
+    case "ingressBytesPerQuery":
+    case "maxIngressBytes":
+      if (capabilities.ingress_bytes) return null;
+      return `${sortBy} is only available for Vitess/MySQL branches with insights ingress bytes enabled. This branch is ${formatBranchKind(capabilities.kind)}; use egressBytes, egressBytesPerQuery, or maxEgressBytes instead.`;
   }
 }
 
@@ -425,6 +452,9 @@ const SUMMARY_FIELDS = [
   "egress_bytes",
   "egress_bytes_per_query",
   "max_egress_bytes",
+  "ingress_bytes",
+  "ingress_bytes_per_query",
+  "max_ingress_bytes",
   "max_shard_queries",
   "last_run_at",
   "slugs",
@@ -597,7 +627,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes is available for MySQL branches only.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only.",
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -606,7 +636,7 @@ export const getInsightsGram = new Gram().tool({
       .enum(["all", ...SORT_METRICS])
       .optional()
       .describe(
-        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes'. 'cpuTime' is Postgres-only; 'maxEgressBytes' is MySQL-only. Ignored when fingerprint is provided."
+        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes'. 'cpuTime' is Postgres-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
       ),
     limit: z
       .number()
@@ -620,7 +650,7 @@ export const getInsightsGram = new Gram().tool({
       .array(z.string())
       .optional()
       .describe(
-        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'indexes', 'maxShardQueries']). 'cpuTime' is Postgres-only; 'maxEgressBytes' is MySQL-only. Ignored when fingerprint is provided."
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes', 'indexes', 'maxShardQueries']). 'cpuTime' is Postgres-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
       ),
     query: z
       .string()
