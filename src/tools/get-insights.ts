@@ -284,7 +284,6 @@ function getBranchCapabilities(branch: BranchMetadata): BranchCapabilities {
       branch.insights_io_timing ?? (kind === "postgresql" && trackIoTiming),
     egress_bytes: branch.insights_egress_bytes ?? true,
     max_egress_bytes: branch.insights_max_egress_bytes ?? kind === "mysql",
-    // Currently Vitess/MySQL only; Postgres returns zeros until horizon ingress lands.
     ingress_bytes: branch.insights_ingress_bytes ?? kind === "mysql",
   };
 }
