@@ -22,6 +22,12 @@ This repo is focused on:
 Some MCP functionality is intentionally not duplicated here because it is
 generated from the API spec and maintained in that generation pipeline.
 
+## Schema recommendation tools
+
+The hand-written `dismiss_schema_recommendation` tool exposes the PlanetScale
+API's dismissal operation, accepts an optional reason, and should only be used
+at the user's request.
+
 ## Quick start
 
 Install dependencies:
