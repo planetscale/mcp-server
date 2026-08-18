@@ -20,6 +20,7 @@ const EXPECTED_TOOLS = [
   "execute_read_query",
   "execute_write_query",
   "get_insights",
+  "get_postgres_logs",
   "list_cluster_sizes",
   "search_documentation",
 ];
@@ -55,6 +56,16 @@ function textOf(result) {
     .filter((part) => part?.type === "text")
     .map((part) => part.text)
     .join("\n");
+}
+
+// A rejected request (schema validation, transport, timeout) carries no tool
+// result, so it is recorded here rather than in result.json/result.txt.
+function errorInfo(error) {
+  if (!(error instanceof Error)) return { message: String(error) };
+  const info = { name: error.name, message: error.message };
+  if (error.code !== undefined) info.code = error.code;
+  if (error.data !== undefined) info.data = error.data;
+  return info;
 }
 
 async function connect(dir) {
@@ -124,6 +135,18 @@ async function doctor() {
     console.log(`OK ${names.length} tools registered: ${names.join(", ")}`);
     console.log(`evidence: ${dir}`);
     return 0;
+  } catch (error) {
+    const info = errorInfo(error);
+    write(dir, "meta.json", {
+      command: "doctor",
+      server_pid: session?.transport.pid ?? null,
+      error: info,
+      duration_ms: Date.now() - started,
+      ok: false,
+    });
+    console.error(`FAIL doctor: ${info.message}`);
+    console.error(`evidence: ${dir}`);
+    return 1;
   } finally {
     session?.flushStderr();
     await session?.client.close().catch(() => {});
@@ -131,8 +154,15 @@ async function doctor() {
 }
 
 async function call(toolName, rawArgs, flags) {
+  let args;
+  try {
+    args = rawArgs ? JSON.parse(rawArgs) : {};
+  } catch (error) {
+    console.error(`FAIL invalid JSON arguments: ${errorInfo(error).message}`);
+    return 1;
+  }
+
   const dir = evidenceDir(flags.label ?? toolName);
-  const args = rawArgs ? JSON.parse(rawArgs) : {};
   const started = Date.now();
   let session;
   try {
@@ -169,6 +199,22 @@ async function call(toolName, rawArgs, flags) {
     }
     console.log(`OK ${toolName}`);
     return 0;
+  } catch (error) {
+    const info = errorInfo(error);
+    write(dir, "meta.json", {
+      command: "call",
+      tool: toolName,
+      arguments: args,
+      server_pid: session?.transport.pid ?? null,
+      error: info,
+      expected_substring: flags.expect ?? null,
+      expectation_met: false,
+      duration_ms: Date.now() - started,
+      ok: false,
+    });
+    console.error(`FAIL ${toolName} rejected: ${info.message}`);
+    console.error(`evidence: ${dir}`);
+    return 1;
   } finally {
     session?.flushStderr();
     await session?.client.close().catch(() => {});

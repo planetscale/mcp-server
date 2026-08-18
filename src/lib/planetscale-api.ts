@@ -42,6 +42,11 @@ export interface PostgresCredentials {
   replica?: boolean;
 }
 
+export interface LogSignature {
+  /** Fully-formed signed logs URL; carries the sig/exp credential pair. */
+  url: string;
+}
+
 export type VitessRole = "reader" | "writer" | "admin" | "readwriter";
 
 export type PostgresInheritedRole =
@@ -152,6 +157,26 @@ export async function getBranch(
   return apiRequest<Branch>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`,
     authHeader
+  );
+}
+
+/**
+ * Create a short-lived signature (valid ~10 minutes) authorizing direct
+ * queries against the branch logs service. Postgres/Neki branches only;
+ * Vitess/MySQL branches return 404. Note: this endpoint is not part of the
+ * published OpenAPI spec.
+ */
+export async function createLogSignature(
+  organization: string,
+  database: string,
+  branch: string,
+  authHeader: string,
+  signal?: AbortSignal
+): Promise<LogSignature> {
+  return apiRequest<LogSignature>(
+    `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/logs/signatures`,
+    authHeader,
+    { method: "POST", signal: signal ?? null }
   );
 }
 
