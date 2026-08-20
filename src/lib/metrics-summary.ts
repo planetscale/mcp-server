@@ -44,25 +44,14 @@ export interface MetricSeriesSummary {
 
 export function metricUnit(metric: string): MetricUnit {
   const lower = metric.toLowerCase();
-  if (lower.includes("bytes") && lower.endsWith("_rate")) {
-    return "bytes_per_second";
-  }
-  if (
-    lower.includes("bytes") ||
-    lower === "storage_per_table" ||
-    lower === "shard_storage_usage" ||
-    lower === "shard_storage_available" ||
-    lower === "planetscale_primary_storage_usage"
-  ) {
-    return "bytes";
+  if (lower.includes("bytes") || lower.includes("storage")) {
+    return lower.endsWith("_rate") ? "bytes_per_second" : "bytes";
   }
   if (
     lower.includes("percent") ||
-    (lower.includes("by_az") &&
-      (lower.includes("cpu") || lower.includes("memory"))) ||
-    lower.endsWith("cpu_usage") ||
-    lower.endsWith("memory_usage") ||
-    lower === "block_cache_hit_ratio"
+    lower.endsWith("ratio") ||
+    ((lower.includes("cpu") || lower.includes("memory")) &&
+      (lower.includes("usage") || lower.includes("by_az")))
   ) {
     return "percent";
   }

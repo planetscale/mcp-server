@@ -22,6 +22,7 @@ describe("metricUnit", () => {
     assert.equal(metricUnit("vtgate_cpu_avg_by_az"), "percent");
     assert.equal(metricUnit("vtgate_memory_by_az"), "percent");
     assert.equal(metricUnit("vtgate_memory_avg_by_az"), "percent");
+    assert.equal(metricUnit("planetscale_dedicated_pgbouncer_cpu_usage"), "percent");
     assert.equal(metricUnit("planetscale_volume_usage_percentage"), "percent");
     assert.equal(metricUnit("latency_p99"), "milliseconds");
     assert.equal(metricUnit("cpu_duration_millis"), "milliseconds");
@@ -31,6 +32,7 @@ describe("metricUnit", () => {
       "seconds"
     );
     assert.equal(metricUnit("queries"), "number");
+    assert.equal(metricUnit("vtgate_requests"), "number");
   });
 });
 
