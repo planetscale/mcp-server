@@ -19,6 +19,9 @@ describe("metricUnit", () => {
     assert.equal(metricUnit("planetscale_edge_bytes_received"), "bytes");
     assert.equal(metricUnit("block_cache_hit_ratio"), "percent");
     assert.equal(metricUnit("vtgate_cpu_by_az"), "percent");
+    assert.equal(metricUnit("vtgate_cpu_avg_by_az"), "percent");
+    assert.equal(metricUnit("vtgate_memory_by_az"), "percent");
+    assert.equal(metricUnit("vtgate_memory_avg_by_az"), "percent");
     assert.equal(metricUnit("planetscale_volume_usage_percentage"), "percent");
     assert.equal(metricUnit("latency_p99"), "milliseconds");
     assert.equal(metricUnit("cpu_duration_millis"), "milliseconds");

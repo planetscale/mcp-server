@@ -58,8 +58,8 @@ export function metricUnit(metric: string): MetricUnit {
   }
   if (
     lower.includes("percent") ||
-    lower.includes("cpu_by_az") ||
-    lower.includes("memory_by_az") ||
+    (lower.includes("by_az") &&
+      (lower.includes("cpu") || lower.includes("memory"))) ||
     lower.endsWith("cpu_usage") ||
     lower.endsWith("memory_usage") ||
     lower === "block_cache_hit_ratio"
