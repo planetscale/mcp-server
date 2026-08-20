@@ -4,6 +4,7 @@ import { z } from "zod";
 import { executeReadQueryGram } from "./tools/execute-read-query.ts";
 import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
+import { getMetricsGram } from "./tools/get-metrics.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
 
@@ -24,6 +25,7 @@ const gram = new Gram({
   .extend(executeReadQueryGram)
   .extend(executeWriteQueryGram)
   .extend(getInsightsGram)
+  .extend(getMetricsGram)
   .extend(listClusterSizesGram)
   .extend(searchDocumentationGram);
 

@@ -20,6 +20,7 @@ const EXPECTED_TOOLS = [
   "execute_read_query",
   "execute_write_query",
   "get_insights",
+  "get_metrics",
   "list_cluster_sizes",
   "search_documentation",
 ];

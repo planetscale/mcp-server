@@ -287,3 +287,159 @@ export async function deleteVitessPassword(
     { method: "DELETE" }
   );
 }
+
+export interface TimeSeries {
+  type?: string;
+  metric: string;
+  label?: string;
+  labels?: Record<string, string>;
+  points: number[][];
+}
+
+export interface MetricSeries {
+  type?: string;
+  start_date: string;
+  end_date: string;
+  interval: number;
+  series: TimeSeries[];
+}
+
+export interface InstantMetric {
+  metric: string;
+  label?: string;
+  values: Array<Record<string, unknown>>;
+}
+
+export interface InstantMetrics {
+  type?: string;
+  branch?: Record<string, unknown>;
+  metrics: InstantMetric[];
+}
+
+export interface GetMetricSeriesRequest {
+  organization: string;
+  database: string;
+  branch: string;
+  metrics: string[];
+  period?: string;
+  from?: string;
+  to?: string;
+  steps?: number;
+  tablet_type?: string;
+  keyspace?: string;
+  shard?: string;
+  role?: string;
+  container?: string;
+  pod?: string;
+  pods?: string[];
+  query_ids?: string[];
+  fingerprint?: string;
+  budget_id?: string;
+  rule_id?: string;
+  q?: string;
+}
+
+export interface GetInstantMetricsRequest {
+  organization: string;
+  database: string;
+  branch: string;
+  metrics: string[];
+  role?: string;
+  shard?: string;
+  container?: string;
+  pod?: string;
+}
+
+function metricsAPIPath(
+  organization: string,
+  database: string,
+  branch: string
+): string {
+  return `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/metrics`;
+}
+
+function setQueryValue(
+  params: URLSearchParams,
+  key: string,
+  value?: string | number
+): void {
+  if (value === undefined || value === "") {
+    return;
+  }
+  params.set(key, String(value));
+}
+
+function addQueryValues(
+  params: URLSearchParams,
+  key: string,
+  values?: string[]
+): void {
+  if (!values) {
+    return;
+  }
+  for (const value of values) {
+    if (value) {
+      params.append(key, value);
+    }
+  }
+}
+
+export function metricSeriesQuery(
+  request: Omit<GetMetricSeriesRequest, "organization" | "database" | "branch">
+): string {
+  const params = new URLSearchParams();
+  addQueryValues(params, "metrics[]", request.metrics);
+  setQueryValue(params, "period", request.period);
+  setQueryValue(params, "from", request.from);
+  setQueryValue(params, "to", request.to);
+  if (request.steps !== undefined && request.steps > 0) {
+    params.set("steps", String(request.steps));
+  }
+  setQueryValue(params, "tablet_type", request.tablet_type);
+  setQueryValue(params, "keyspace", request.keyspace);
+  setQueryValue(params, "shard", request.shard);
+  setQueryValue(params, "role", request.role);
+  setQueryValue(params, "container", request.container);
+  setQueryValue(params, "pod", request.pod);
+  addQueryValues(params, "pods[]", request.pods);
+  addQueryValues(params, "query_ids[]", request.query_ids);
+  setQueryValue(params, "fingerprint", request.fingerprint);
+  setQueryValue(params, "budget_id", request.budget_id);
+  setQueryValue(params, "rule_id", request.rule_id);
+  setQueryValue(params, "q", request.q);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function instantMetricsQuery(
+  request: Omit<GetInstantMetricsRequest, "organization" | "database" | "branch">
+): string {
+  const params = new URLSearchParams();
+  addQueryValues(params, "metrics[]", request.metrics);
+  setQueryValue(params, "role", request.role);
+  setQueryValue(params, "shard", request.shard);
+  setQueryValue(params, "container", request.container);
+  setQueryValue(params, "pod", request.pod);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getMetricSeries(
+  request: GetMetricSeriesRequest,
+  authHeader: string
+): Promise<MetricSeries> {
+  return apiRequest<MetricSeries>(
+    `${metricsAPIPath(request.organization, request.database, request.branch)}${metricSeriesQuery(request)}`,
+    authHeader
+  );
+}
+
+export async function getInstantMetrics(
+  request: GetInstantMetricsRequest,
+  authHeader: string
+): Promise<InstantMetrics> {
+  return apiRequest<InstantMetrics>(
+    `${metricsAPIPath(request.organization, request.database, request.branch)}/instant${instantMetricsQuery(request)}`,
+    authHeader
+  );
+}

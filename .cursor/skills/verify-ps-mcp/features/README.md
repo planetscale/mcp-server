@@ -9,6 +9,7 @@ touched others. Check this list before claiming a change is verified.
 | Feature | File | Needs auth | Safe to drive |
 | --- | --- | --- | --- |
 | Query Insights | [get-insights.md](./get-insights.md) | yes | yes, read-only |
+| Branch metrics | [get-metrics.md](./get-metrics.md) | yes | yes, read-only |
 | Read queries | [execute-read-query.md](./execute-read-query.md) | yes | yes, read-only |
 | Write query guards | [execute-write-query.md](./execute-write-query.md) | yes | rejection paths only |
 | Cluster sizes | [list-cluster-sizes.md](./list-cluster-sizes.md) | yes | yes, read-only |
