@@ -53,7 +53,7 @@ test("update_payment_method creates Checkout and explains the next action", asyn
   assert.equal(result.setup_id, "pmsetup1");
   assert.equal(result.checkout_url, "https://checkout.stripe.com/test");
   assert.deepEqual(result.next_action, {
-    tool: "get_payment_method_update_status",
+    tool: "get_update_payment_method_status",
     arguments: { organization: "acme", setup_id: "pmsetup1" },
     instruction:
       "Give checkout_url to the customer. After they finish Stripe Checkout, call the status tool with this same setup_id. Do not create another setup while this one is pending.",
@@ -76,7 +76,7 @@ test("status keeps a pending setup resumable without creating another", async ()
   };
 
   const response = await paymentMethodsGram.handleToolCall({
-    name: "get_payment_method_update_status",
+    name: "get_update_payment_method_status",
     input: { organization: "acme", setup_id: "pmsetup1" },
   });
   const result = (await response.json()) as {
@@ -85,7 +85,7 @@ test("status keeps a pending setup resumable without creating another", async ()
   };
 
   assert.equal(result.state, "pending");
-  assert.equal(result.next_action.tool, "get_payment_method_update_status");
+  assert.equal(result.next_action.tool, "get_update_payment_method_status");
 });
 
 test("status returns saved card details after Checkout completes", async () => {
@@ -111,7 +111,7 @@ test("status returns saved card details after Checkout completes", async () => {
   };
 
   const response = await paymentMethodsGram.handleToolCall({
-    name: "get_payment_method_update_status",
+    name: "get_update_payment_method_status",
     input: { organization: "acme", setup_id: "pmsetup1" },
   });
   const result = (await response.json()) as {
@@ -160,7 +160,7 @@ test("status keeps Checkout completed when card confirmation lacks read_payment_
   };
 
   const response = await paymentMethodsGram.handleToolCall({
-    name: "get_payment_method_update_status",
+    name: "get_update_payment_method_status",
     input: { organization: "acme", setup_id: "pmsetup1" },
   });
   const result = (await response.json()) as {
