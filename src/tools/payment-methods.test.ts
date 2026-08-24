@@ -141,7 +141,7 @@ test("status returns saved card details after Checkout completes", async () => {
   assert.equal(result.next_action, null);
 });
 
-test("status keeps Checkout completed when card confirmation lacks read_payment_method", async () => {
+test("status keeps Checkout completed when card confirmation lacks payment method full access", async () => {
   process.env["PLANETSCALE_OAUTH2_ACCESS_TOKEN"] = "oauth-token";
   const requests: string[] = [];
   globalThis.fetch = async (input) => {
@@ -178,7 +178,7 @@ test("status keeps Checkout completed when card confirmation lacks read_payment_
   assert.equal(result.payment_method, null);
   assert.equal(
     result.warning,
-    "Checkout succeeded, but confirming the saved card requires read_payment_method."
+    "Checkout succeeded, but confirming the saved card requires full access to the organization's payment method. Ask the customer to re-authorize with Payment method set to Full access."
   );
   assert.equal(result.next_action, null);
 });

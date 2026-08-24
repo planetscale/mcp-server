@@ -36,7 +36,7 @@ function paymentMethodConfirmationWarning(error: unknown): string {
     error instanceof PlanetScaleAPIError &&
     (error.statusCode === 401 || error.statusCode === 403)
   ) {
-    return "Checkout succeeded, but confirming the saved card requires read_payment_method.";
+    return "Checkout succeeded, but confirming the saved card requires full access to the organization's payment method. Ask the customer to re-authorize with Payment method set to Full access.";
   }
   if (error instanceof PlanetScaleAPIError) {
     return apiErrorMessage(error);
