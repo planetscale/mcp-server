@@ -28,8 +28,8 @@
     "build": "gf build"
   },
   "dependencies": {
-    "@gram-ai/functions": "^0.12.1",
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@gram-ai/functions": "^0.18.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@neondatabase/serverless": "^1.0.2",
     "@planetscale/database": "^1.19.0",
     "dotenv": "^17.2.3",
