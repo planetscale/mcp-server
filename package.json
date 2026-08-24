@@ -21,6 +21,7 @@
   "scripts": {
     "dev": "mcp-inspector --transport stdio nodemon -q --watch src --exec tsx ./src/server.ts",
     "lint": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types src/**/*.test.ts",
     "push": "gf push",
     "prebuild": "tsc -p tsconfig.json",
     "prepublishOnly": "npm run build",

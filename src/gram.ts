@@ -5,6 +5,7 @@ import { executeReadQueryGram } from "./tools/execute-read-query.ts";
 import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
+import { paymentMethodsGram } from "./tools/payment-methods.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
 
 const gram = new Gram({
@@ -25,6 +26,7 @@ const gram = new Gram({
   .extend(executeWriteQueryGram)
   .extend(getInsightsGram)
   .extend(listClusterSizesGram)
+  .extend(paymentMethodsGram)
   .extend(searchDocumentationGram);
 
 export default gram;
