@@ -140,3 +140,45 @@ test("status returns saved card details after Checkout completes", async () => {
   });
   assert.equal(result.next_action, null);
 });
+
+test("status keeps Checkout completed when card confirmation lacks read_payment_method", async () => {
+  process.env["PLANETSCALE_OAUTH2_ACCESS_TOKEN"] = "oauth-token";
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    requests.push(input.toString());
+    if (requests.length === 1) {
+      return Response.json({
+        id: "pmsetup1",
+        state: "completed",
+        completed_at: "2026-08-24T20:30:00Z",
+      });
+    }
+    return Response.json(
+      { code: "forbidden", message: "User does not have permission to perform this action." },
+      { status: 403 }
+    );
+  };
+
+  const response = await paymentMethodsGram.handleToolCall({
+    name: "get_payment_method_update_status",
+    input: { organization: "acme", setup_id: "pmsetup1" },
+  });
+  const result = (await response.json()) as {
+    state: string;
+    payment_method: null;
+    warning: string;
+    next_action: null;
+  };
+
+  assert.deepEqual(requests, [
+    "https://api.planetscale.com/v1/organizations/acme/billing/payment-method-setups/pmsetup1",
+    "https://api.planetscale.com/v1/organizations/acme/billing/payment-method",
+  ]);
+  assert.equal(result.state, "completed");
+  assert.equal(result.payment_method, null);
+  assert.equal(
+    result.warning,
+    "Checkout succeeded, but confirming the saved card requires read_payment_method."
+  );
+  assert.equal(result.next_action, null);
+});

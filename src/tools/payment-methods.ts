@@ -31,6 +31,19 @@ function apiErrorMessage(error: PlanetScaleAPIError): string {
   return error.message;
 }
 
+function paymentMethodConfirmationWarning(error: unknown): string {
+  if (
+    error instanceof PlanetScaleAPIError &&
+    (error.statusCode === 401 || error.statusCode === 403)
+  ) {
+    return "Checkout succeeded, but confirming the saved card requires read_payment_method.";
+  }
+  if (error instanceof PlanetScaleAPIError) {
+    return apiErrorMessage(error);
+  }
+  return "The saved payment method details could not be loaded.";
+}
+
 function setupNextAction(
   organization: string,
   setup: BillingPaymentMethodSetup
@@ -75,7 +88,7 @@ export const paymentMethodsGram = new Gram()
   .tool({
     name: UPDATE_TOOL,
     description:
-      "Start a secure Stripe Checkout session to add or replace an organization's billing card. Use when a customer asks to add, set, replace, or update their PlanetScale payment method. This tool never collects card details: return checkout_url to the customer and let them complete Stripe Checkout in their browser. It returns a setup_id; do not call this tool again while that setup is pending. After the customer finishes, call get_payment_method_update_status with the same organization and setup_id. Requires write_payment_method access.",
+      "Start a secure Stripe Checkout session to add or replace an organization's billing card. Use when a customer asks to add, set, replace, or update their PlanetScale payment method. This tool never collects card details: return checkout_url to the customer and let them complete Stripe Checkout in their browser. It returns a setup_id; do not call this tool again while that setup is pending. After the customer finishes, call get_payment_method_update_status with the same organization and setup_id. Requires write_payment_method. Confirming the saved card after Checkout also requires read_payment_method.",
     inputSchema: {
       organization: z.string().describe("PlanetScale organization name"),
     },
@@ -124,7 +137,7 @@ export const paymentMethodsGram = new Gram()
   .tool({
     name: STATUS_TOOL,
     description:
-      "Check a Stripe Checkout payment method update started by update_payment_method. Use the setup_id returned by that tool; it is not a payment method ID. This is a one-time status check and does not wait. If pending, give checkout_url to the customer and call this tool again only after they finish Checkout. If completed, this tool also returns the saved card brand, last four digits, expiration, and cardholder name as confirmation. Failed or expired setups cannot be resumed. Requires write_payment_method access.",
+      "Check a Stripe Checkout payment method update started by update_payment_method. Use the setup_id returned by that tool; it is not a payment method ID. This is a one-time status check and does not wait. If pending, give checkout_url to the customer and call this tool again only after they finish Checkout. If completed, this tool also returns the saved card brand, last four digits, expiration, and cardholder name as confirmation. Failed or expired setups cannot be resumed. Requires write_payment_method to inspect the setup, and read_payment_method to return the saved card after completion.",
     inputSchema: {
       organization: z.string().describe("PlanetScale organization name"),
       setup_id: z
@@ -186,10 +199,7 @@ export const paymentMethodsGram = new Gram()
             completed_at: setup.completed_at ?? null,
             message: setupMessage(setup),
             payment_method: null,
-            warning:
-              error instanceof PlanetScaleAPIError
-                ? apiErrorMessage(error)
-                : "The saved payment method details could not be loaded.",
+            warning: paymentMethodConfirmationWarning(error),
             next_action: null,
           });
         }
