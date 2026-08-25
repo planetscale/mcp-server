@@ -1,5 +1,8 @@
 const API_BASE = "https://api.planetscale.com/v1";
 
+/** Identifies MCP server traffic to the PlanetScale API. */
+export const USER_AGENT = "planetscale-mcp";
+
 export type DatabaseKind = "mysql" | "postgresql";
 
 export interface Database {
@@ -16,6 +19,31 @@ export interface Branch {
   kind: DatabaseKind;
   production: boolean;
   has_replicas: boolean;
+}
+
+export interface BillingPaymentMethod {
+  id: string;
+  brand: string;
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  name?: string | null;
+}
+
+export type BillingPaymentMethodSetupState =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "expired";
+
+export interface BillingPaymentMethodSetup {
+  id: string;
+  state: BillingPaymentMethodSetupState;
+  checkout_url?: string | null;
+  error?: string | null;
+  expires_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
 }
 
 export interface VitessCredentials {
@@ -88,6 +116,7 @@ async function apiRequest<T>(
     headers: {
       Authorization: authHeader,
       "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
       ...options.headers,
     },
   });
@@ -157,6 +186,43 @@ export async function getBranch(
   return apiRequest<Branch>(
     `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}`,
     authHeader
+  );
+}
+
+export async function createBillingPaymentMethodSetup(
+  organization: string,
+  authHeader: string,
+  signal?: AbortSignal
+): Promise<BillingPaymentMethodSetup> {
+  return apiRequest<BillingPaymentMethodSetup>(
+    `/organizations/${encodeURIComponent(organization)}/billing/payment-method-setups`,
+    authHeader,
+    { method: "POST", signal }
+  );
+}
+
+export async function getBillingPaymentMethodSetup(
+  organization: string,
+  setupId: string,
+  authHeader: string,
+  signal?: AbortSignal
+): Promise<BillingPaymentMethodSetup> {
+  return apiRequest<BillingPaymentMethodSetup>(
+    `/organizations/${encodeURIComponent(organization)}/billing/payment-method-setups/${encodeURIComponent(setupId)}`,
+    authHeader,
+    { signal }
+  );
+}
+
+export async function getBillingPaymentMethod(
+  organization: string,
+  authHeader: string,
+  signal?: AbortSignal
+): Promise<BillingPaymentMethod> {
+  return apiRequest<BillingPaymentMethod>(
+    `/organizations/${encodeURIComponent(organization)}/billing/payment-method`,
+    authHeader,
+    { signal }
   );
 }
 

@@ -1,6 +1,6 @@
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
+import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
@@ -236,6 +236,7 @@ async function fetchBranchMetadata(
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
     },
   });
 
@@ -353,6 +354,7 @@ async function fetchInsights(
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
     },
   });
 
@@ -515,6 +517,7 @@ async function fetchFingerprintSummary(
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
     },
   });
 
@@ -585,6 +588,7 @@ async function fetchSelectedQueries(
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
     },
   });
 

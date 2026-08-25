@@ -21,14 +21,15 @@
   "scripts": {
     "dev": "mcp-inspector --transport stdio nodemon -q --watch src --exec tsx ./src/server.ts",
     "lint": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types src/**/*.test.ts",
     "push": "gf push",
     "prebuild": "tsc -p tsconfig.json",
     "prepublishOnly": "npm run build",
     "build": "gf build"
   },
   "dependencies": {
-    "@gram-ai/functions": "^0.12.1",
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@gram-ai/functions": "^0.18.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@neondatabase/serverless": "^1.0.2",
     "@planetscale/database": "^1.19.0",
     "dotenv": "^17.2.3",
