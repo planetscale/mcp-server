@@ -1,5 +1,8 @@
 const API_BASE = "https://api.planetscale.com/v1";
 
+/** Identifies MCP server traffic to the PlanetScale API. */
+export const USER_AGENT = "planetscale-mcp";
+
 export type DatabaseKind = "mysql" | "postgresql";
 
 export interface Database {
@@ -108,6 +111,7 @@ async function apiRequest<T>(
     headers: {
       Authorization: authHeader,
       "Content-Type": "application/json",
+      "User-Agent": USER_AGENT,
       ...options.headers,
     },
   });
