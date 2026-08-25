@@ -1,6 +1,6 @@
 import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
-import { PlanetScaleAPIError } from "../lib/planetscale-api.ts";
+import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
@@ -95,6 +95,7 @@ async function fetchClusterSizeSkus(
     headers: {
       Authorization: authHeader,
       Accept: "application/json",
+      "User-Agent": USER_AGENT,
     },
   });
 
