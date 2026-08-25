@@ -34,17 +34,17 @@ as-is. Never echo either value into a terminal, a log, or an evidence file.
 ## Doctor
 
 Run this first whenever anything looks wrong. It is read-only: it starts a
-server, initializes the MCP session, lists tools, and checks the five expected
+server, initializes the MCP session, lists tools, and checks the nine expected
 tools are registered.
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs doctor
 ```
 
-Healthy output names all five tools and exits 0:
+Healthy output names all nine tools and exits 0:
 
 ```
-OK 5 tools registered: execute_read_query, execute_write_query, get_insights, list_cluster_sizes, search_documentation
+OK 9 tools registered: execute_read_query, execute_write_query, get_insights, get_payment_method_setup, list_cluster_sizes, list_query_error_executions, list_query_error_patterns, search_documentation, update_payment_method
 ```
 
 A crash here means the server itself is broken (a bad import, a Zod schema that
@@ -80,8 +80,9 @@ read.
 ### Safety while driving
 
 These tools talk to the real PlanetScale API with real credentials. Reads
-(`get_insights`, `list_cluster_sizes`, `search_documentation`,
-`execute_read_query`) are safe against any database you own.
+(`get_insights`, `list_query_error_patterns`, `list_query_error_executions`,
+`list_cluster_sizes`, `search_documentation`, `execute_read_query`) are safe
+against any database you own.
 
 `execute_write_query` mutates real data and is not a normal verification target.
 Its guard rules in `src/lib/query-validator.ts` run before any credential is

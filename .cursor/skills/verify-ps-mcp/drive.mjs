@@ -20,8 +20,12 @@ const EXPECTED_TOOLS = [
   "execute_read_query",
   "execute_write_query",
   "get_insights",
+  "get_payment_method_setup",
   "list_cluster_sizes",
+  "list_query_error_executions",
+  "list_query_error_patterns",
   "search_documentation",
+  "update_payment_method",
 ];
 
 function parseArgs(argv) {
