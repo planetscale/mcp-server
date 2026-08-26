@@ -705,12 +705,16 @@ export const getInsightsGram = new Gram().tool({
         'table:table_name, ' +
         'keyspace:keyspace_name, ' +
         'table_keyspace:keyspace_name, ' +
+        'tag:tag_key:tag_value for queries carrying that tag with that value, ' +
+        'tag:tag_key on its own for queries carrying the tag whatever its value (including ones whose value went unrecorded), ' +
+        'where tag_key is the bare tag name without the \'S\'/\'B\' prefix `list_query_tags` reports and a value containing spaces or colons needs quoting (tag:route:"GET /horses"), ' +
         'index:index_name or index:table.index_name, ' +
         'indexed:true|false, ' +
         'multishard:true|false, ' +
         'query_count:>N or query_count:<N, ' +
         'p99:>N or p50:<N (ms), ' +
         'max_latency:>N (ms). ' +
+        'Any term can be negated by an immediately preceding \'!\' (!tag:app:web). ' +
         'Ignored when fingerprint is provided.'
       ),
     fingerprint: z

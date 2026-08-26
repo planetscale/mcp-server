@@ -39,6 +39,15 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
   --expect '"mode":"fingerprint"' --label insights-fingerprint
 ```
 
+Filtering to one tag value, using a key and value copied from a
+`list_query_tags` run — note the key is the bare name, with the prefix stripped:
+
+```bash
+node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
+  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","query":"tag:app:TAG_VALUE","period":"1d"}' \
+  --expect '"mode":"aggregated"' --label insights-tag-value
+```
+
 A window past the 25-hour legacy cap. `from` is
 on the hour and `to` is left off on purpose — see the notes:
 
@@ -95,6 +104,14 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
   but zero (ingress on Postgres) is absent from results rather than shown as 0.
   Asserting on the absence of a field cannot distinguish "not collected" from
   "collected and zero"; assert on the refusal message instead.
+- `query` tag terms take two forms: `tag:tag_key:tag_value` for one value, and
+  `tag:tag_key` alone for any query carrying the tag whatever its value —
+  including queries whose value went unrecorded, which the value form cannot
+  reach. The key is the bare tag name, *not* the `S`/`B`-prefixed `id` that
+  `list_query_tags` returns and that `list_query_tag_summaries` requires in its
+  `tags` param; passing a prefixed key here matches nothing rather than
+  erroring, so a zero-result tag filter is the first thing to check. A value
+  with spaces or colons needs quoting: `tag:route:"GET /horses"`.
 - `period` cannot be combined with `from`/`to`; the tool returns an error string
   saying so. `period` itself still tops out at `8d` — the wide window is
   reachable only through `from`/`to`.

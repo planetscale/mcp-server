@@ -104,9 +104,11 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_tag_summaries \
 - This endpoint ignores `fingerprint`, `keyspace`, `values_limit`, and
   `literal_values_only`, which is why the tool does not offer them. `query` is a
   structured search DSL and the only way to narrow these summaries that way:
-  `fingerprint:<hash>`, `keyspace:<name>`, `tag:<name>=<value>`, `user:<name>`,
-  `statement_type:<type>`, `table:<name>`, `index:<name>`, comparisons like
-  `p99:>100`, a bare word matching normalized SQL, and `!` to negate a term.
+  `fingerprint:<hash>`, `keyspace:<name>`, `tag:<key>:<value>` (or `tag:<key>`
+  alone for any value), `user:<name>`, `statement_type:<type>`, `table:<name>`,
+  `index:<name>`, comparisons like `p99:>100`, a bare word matching normalized
+  SQL, and `!` to negate a term. The tag key here is the **bare** name, unlike
+  the `tags` param on this same tool, which needs the `S`/`B` prefix.
   Note this is a different meaning of the same underlying `q` param than
   `list_query_tags` uses, where it is a raw `LIKE` pattern.
 - An out-of-vocabulary `sort_by` or `fields` entry is refused by the input

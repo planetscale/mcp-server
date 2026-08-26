@@ -431,7 +431,7 @@ export const queryTagsGram = new Gram()
         .string()
         .optional()
         .describe(
-          "Filter the query statistics being summarized. This is a structured search, not a plain substring: supported terms include `fingerprint:<hash>`, `keyspace:<name>`, `tag:<name>=<value>`, `user:<name>`, `statement_type:<type>`, `table:<name>`, `index:<name>`, and comparisons like `p99:>100`, while a bare word matches the normalized SQL. Prefix a term with '!' to negate it. This is also the only way to restrict these summaries to one fingerprint or keyspace -- unlike `list_query_tags`, this endpoint has no separate fingerprint or keyspace filter."
+          "Filter the query statistics being summarized. This is a structured search, not a plain substring: supported terms include `fingerprint:<hash>`, `keyspace:<name>`, `tag:<key>:<value>` (or `tag:<key>` for any value), `user:<name>`, `statement_type:<type>`, `table:<name>`, `index:<name>`, and comparisons like `p99:>100`, while a bare word matches the normalized SQL. Prefix a term with '!' to negate it. This is also the only way to restrict these summaries to one fingerprint or keyspace -- unlike `list_query_tags`, this endpoint has no separate fingerprint or keyspace filter."
         ),
       sort_by: z
         .enum(SUMMARY_FIELD_NAMES)
