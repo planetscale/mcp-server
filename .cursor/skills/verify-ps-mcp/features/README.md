@@ -9,6 +9,7 @@ touched others. Check this list before claiming a change is verified.
 | Feature | File | Needs auth | Safe to drive |
 | --- | --- | --- | --- |
 | Query Insights | [get-insights.md](./get-insights.md) | yes | yes, read-only |
+| Postgres logs | [get-postgres-logs.md](./get-postgres-logs.md) | yes | yes, read-only |
 | Query error patterns | [list-query-error-patterns.md](./list-query-error-patterns.md) | yes | yes, read-only |
 | Query error executions | [list-query-error-executions.md](./list-query-error-executions.md) | yes | yes, read-only |
 | Read queries | [execute-read-query.md](./execute-read-query.md) | yes | yes, read-only |
