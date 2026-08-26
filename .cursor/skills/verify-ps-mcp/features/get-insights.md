@@ -19,7 +19,7 @@ Aggregate mode, the default path most calls take:
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
-  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","period":"24h"}' \
+  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","period":"1d"}' \
   --expect '"mode":"aggregated"' --label insights-aggregate
 ```
 
@@ -27,7 +27,7 @@ Single metric, Vitess bytes received:
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
-  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","sort_by":"ingressBytes","limit":3,"period":"24h"}' \
+  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","sort_by":"ingressBytes","limit":3,"period":"1d"}' \
   --expect '"ingress_bytes"' --label insights-ingress-vitess
 ```
 
@@ -64,7 +64,7 @@ The Postgres half of the ingress gate:
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
-  '{"organization":"YOUR_ORG","database":"POSTGRES_DATABASE","branch":"main","sort_by":"ingressBytes","period":"24h"}' \
+  '{"organization":"YOUR_ORG","database":"POSTGRES_DATABASE","branch":"main","sort_by":"ingressBytes","period":"1d"}' \
   --expect 'only available for Vitess/MySQL branches' --label insights-ingress-postgres
 ```
 

@@ -34,17 +34,17 @@ as-is. Never echo either value into a terminal, a log, or an evidence file.
 ## Doctor
 
 Run this first whenever anything looks wrong. It is read-only: it starts a
-server, initializes the MCP session, lists tools, and checks the ten expected
+server, initializes the MCP session, lists tools, and checks the thirteen expected
 tools are registered.
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs doctor
 ```
 
-Healthy output names all ten tools and exits 0:
+Healthy output names all thirteen tools and exits 0:
 
 ```
-OK 10 tools registered: execute_read_query, execute_write_query, get_insights, get_payment_method_setup, get_postgres_logs, list_cluster_sizes, list_query_error_executions, list_query_error_patterns, search_documentation, update_payment_method
+OK 13 tools registered: execute_read_query, execute_write_query, get_insights, get_payment_method_setup, get_postgres_logs, get_query_tag, list_cluster_sizes, list_query_error_executions, list_query_error_patterns, list_query_tag_summaries, list_query_tags, search_documentation, update_payment_method
 ```
 
 A crash here means the server itself is broken (a bad import, a Zod schema that
@@ -69,7 +69,7 @@ which org and database to use before filling these in:
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
-  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","sort_by":"ingressBytes","limit":3,"period":"24h"}' \
+  '{"organization":"YOUR_ORG","database":"VITESS_DATABASE","branch":"main","sort_by":"ingressBytes","limit":3,"period":"1d"}' \
   --expect '"ingress_bytes"' --label insights-ingress-vitess
 ```
 
@@ -81,7 +81,8 @@ read.
 
 These tools talk to the real PlanetScale API with real credentials. Reads
 (`get_insights`, `get_postgres_logs`, `list_query_error_patterns`,
-`list_query_error_executions`, `list_cluster_sizes`, `search_documentation`,
+`list_query_error_executions`, `list_query_tags`, `get_query_tag`,
+`list_query_tag_summaries`, `list_cluster_sizes`, `search_documentation`,
 `execute_read_query`) are safe against any database you own.
 
 `execute_write_query` mutates real data and is not a normal verification target.

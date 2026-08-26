@@ -8,6 +8,7 @@ import { getPostgresLogsGram } from "./tools/get-postgres-logs.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
 import { paymentMethodsGram } from "./tools/payment-methods.ts";
 import { queryErrorsGram } from "./tools/query-errors.ts";
+import { queryTagsGram } from "./tools/query-tags.ts";
 import { searchDocumentationGram } from "./tools/search-documentation.ts";
 
 const gram = new Gram({
@@ -31,6 +32,7 @@ const gram = new Gram({
   .extend(listClusterSizesGram)
   .extend(paymentMethodsGram)
   .extend(queryErrorsGram)
+  .extend(queryTagsGram)
   .extend(searchDocumentationGram);
 
 export default gram;

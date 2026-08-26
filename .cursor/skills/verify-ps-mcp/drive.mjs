@@ -22,9 +22,12 @@ const EXPECTED_TOOLS = [
   "get_insights",
   "get_payment_method_setup",
   "get_postgres_logs",
+  "get_query_tag",
   "list_cluster_sizes",
   "list_query_error_executions",
   "list_query_error_patterns",
+  "list_query_tag_summaries",
+  "list_query_tags",
   "search_documentation",
   "update_payment_method",
 ];
