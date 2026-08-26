@@ -60,9 +60,6 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_error_patterns \
 
 ## Notes
 
-- `period` is the API's enum and does **not** include `24h`. The last day is
-  `1d`; sending `24h` fails enum validation server-side. Insights (`get_insights`)
-  uses a different period vocabulary — do not copy a period between the two.
 - `limit` maps to `per_page` and is clamped to 1–100 (default 25). These
   endpoints do not paginate: the API returns `next_page`/`prev_page` as null
   unconditionally and ignores `page`, which is why the tool reports `truncated`

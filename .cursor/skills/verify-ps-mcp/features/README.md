@@ -12,6 +12,9 @@ touched others. Check this list before claiming a change is verified.
 | Postgres logs | [get-postgres-logs.md](./get-postgres-logs.md) | yes | yes, read-only |
 | Query error patterns | [list-query-error-patterns.md](./list-query-error-patterns.md) | yes | yes, read-only |
 | Query error executions | [list-query-error-executions.md](./list-query-error-executions.md) | yes | yes, read-only |
+| Query tags | [list-query-tags.md](./list-query-tags.md) | yes | yes, read-only |
+| Single query tag | [get-query-tag.md](./get-query-tag.md) | yes | yes, read-only |
+| Query tag summaries | [list-query-tag-summaries.md](./list-query-tag-summaries.md) | yes | yes, read-only |
 | Read queries | [execute-read-query.md](./execute-read-query.md) | yes | yes, read-only |
 | Write query guards | [execute-write-query.md](./execute-write-query.md) | yes | rejection paths only |
 | Cluster sizes | [list-cluster-sizes.md](./list-cluster-sizes.md) | yes | yes, read-only |
@@ -35,10 +38,17 @@ In the drive commands, substitute:
 - `KEYSPACE` — a keyspace on the Vitess database, copied from a discovery run
 - `ERROR_FINGERPRINT` — an `error_fingerprint` copied from a
   `list_query_error_patterns` run; there is no way to invent one
+- `TAG_ID` — a tag `id` copied from a `list_query_tags` run, prefix included
+  (`Sapp`, `Busername`). Like a fingerprint, there is no way to invent one, and
+  an id stripped of its `S`/`B` prefix is not found.
 
 A branch with no failing queries in the window returns an empty list, which is
 a valid response but proves nothing. Ask the user for a branch that actually
 has errors before verifying the error tools.
+
+The three query tag tools 404 unless Insights is enabled for the database, and
+an empty tag list means the branch's traffic carries no tags. Confirm the
+fixture branch returns tags before reading either as a finding.
 
 ## Keeping this honest
 

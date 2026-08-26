@@ -2,6 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
+import { INSIGHTS_PERIODS } from "../lib/insights-tools.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
 
@@ -686,10 +687,10 @@ export const getInsightsGram = new Gram().tool({
         "Keyspace for fingerprint drill-down. Required to get summary data. Use the `keyspace` value returned in insights results (e.g. 'my_keyspace' for MySQL/Vitess or 'postgres.public' for Postgres databases)."
       ),
     period: z
-      .string()
+      .enum(INSIGHTS_PERIODS)
       .optional()
       .describe(
-        "Shorthand for a recent time window ending at now. Valid values: '15m', '1h', '3h', '6h', '12h', '24h'. Cannot be combined with from/to — use one or the other. Only supported in discovery mode (ignored in fingerprint mode — use from/to instead)."
+        "Shorthand for a recent time window ending at now. Cannot be combined with from/to — use one or the other. Only supported in discovery mode (ignored in fingerprint mode — use from/to instead)."
       ),
     from: z
       .string()

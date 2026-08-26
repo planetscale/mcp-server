@@ -2,14 +2,17 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
+import {
+  errorMessage,
+  INSIGHTS_PERIODS,
+  resolveEnv,
+  resultFields,
+  type InsightsPeriod,
+} from "../lib/insights-tools.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
 
 const SORT_FIELDS = ["error", "lastRun", "count", "totalTime", "timePerQuery"] as const;
-
-// Mirrors the API's `period` enum. Note there is no '24h' -- the last-day
-// window is '1d', and sending '24h' fails enum validation server-side.
-const PERIODS = ["15m", "1h", "3h", "6h", "12h", "1d", "2d", "7d", "8d"] as const;
 
 const TABLET_TYPES = ["primary", "replica", "rdonly"] as const;
 
@@ -45,19 +48,6 @@ export interface ErrorExecutionEntry {
 
 interface ListResponse<T> {
   data: T[];
-}
-
-/**
- * These endpoints cap results at `per_page` but do not paginate: the API
- * renders next_page/prev_page as null unconditionally and ignores the `page`
- * param, so a full page is the only available signal that results were cut
- * off. Report that rather than a page cursor the caller cannot act on.
- */
-function resultFields(returned: number, limit: number): Record<string, unknown> {
-  return {
-    returned,
-    truncated: returned >= limit,
-  };
 }
 
 // Fields to include in error execution results for token efficiency (the API
@@ -96,10 +86,10 @@ const commonInputSchema = {
   database: z.string().describe("Database name"),
   branch: z.string().describe("Branch name (e.g., 'main')"),
   period: z
-    .enum(PERIODS)
+    .enum(INSIGHTS_PERIODS)
     .optional()
     .describe(
-      "Shorthand for a recent time window ending at now. Use '1d' (not '24h') for the last day. Cannot be combined with from/to."
+      "Shorthand for a recent time window ending at now. Cannot be combined with from/to."
     ),
   from: z
     .string()
@@ -123,7 +113,7 @@ interface CommonInput {
   organization: string;
   database: string;
   branch: string;
-  period?: (typeof PERIODS)[number] | undefined;
+  period?: InsightsPeriod | undefined;
   from?: string | undefined;
   to?: string | undefined;
   limit?: number | undefined;
@@ -171,25 +161,6 @@ function buildRequestContext(
     },
     limit,
   };
-}
-
-/** Prefer ctx.env, falling back to process.env for local development. */
-function resolveEnv(ctxEnv: object): Record<string, string | undefined> {
-  return Object.keys(ctxEnv).length > 0
-    ? (ctxEnv as Record<string, string | undefined>)
-    : process.env;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof PlanetScaleAPIError) {
-    return `Error: ${error.message} (status: ${error.statusCode})`;
-  }
-
-  if (error instanceof Error) {
-    return `Error: ${error.message}`;
-  }
-
-  return "Error: An unexpected error occurred";
 }
 
 async function fetchErrorsAPI<T>(
