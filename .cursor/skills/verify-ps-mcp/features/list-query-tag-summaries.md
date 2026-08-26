@@ -142,8 +142,10 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_tag_summaries \
 - Responses are cached server-side for roughly half a minute. An immediate
   re-drive with different tags or fields comes back fresh, but re-driving the
   *same* call can return the previous answer.
-- `from`/`to` wider than 25 hours falls back to the last 24 hours
-  server-side — the whole trio shares this; see
+- `from`/`to` wider than 25 hours must be hour-aligned, and a 400 from a
+  misaligned range arrives through the same handler as a bad `tags[]` prefix —
+  the tool prefers the API's message, so read it rather than assuming which one
+  fired. The whole trio shares the range rules; see
   [list-query-tags.md](./list-query-tags.md).
 - A tag with a single value returns one row, which proves the plumbing but shows
   nothing about attribution. Pick a tag with several values.

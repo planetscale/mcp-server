@@ -111,9 +111,13 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_tags \
   queries where Insights had already stopped recording this tag's values because
   the tag had too many distinct ones. A collapsed value is unrecoverable, not
   zero and not `Other`.
-- `from`/`to` ranges longer than 25 hours silently fall back to the default
-  24-hour window server-side. Use `period` (`2d`, `7d`, `8d`) for a wider
-  window; a wide `from`/`to` that returns recent-looking data is expected.
+- `from`/`to` reaches back up to 365 days, but a range wider than 25 hours must
+  cover whole hours: `from` on the hour, and `to` on the hour or at its last
+  second. Omitting `to` is the easy path — the
+  API rounds up to the end of the current hour. A misaligned wide range comes
+  back as a **400** whose message names the rule, surfaced as tool error text;
+  it is no longer narrowed to the last 24 hours, so recent-looking data from a
+  wide range is now a bug rather than the documented behavior.
 - A 404 covers two cases: a wrong org/database/branch name, or Insights
   disabled for the database. Check the fixture before filing it as a tool bug.
 - A branch whose traffic carries no tags returns `tags: []` with a 200. That is

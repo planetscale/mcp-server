@@ -3,7 +3,11 @@ import { z } from "zod";
 import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 import {
+  apiErrorMessage,
   errorMessage,
+  EXTENDED_FROM_DESCRIPTION,
+  EXTENDED_RANGE_NOTE,
+  EXTENDED_TO_DESCRIPTION,
   INSIGHTS_PERIODS,
   resolveEnv,
   resultFields,
@@ -138,16 +142,8 @@ const branchInputSchema = {
     .describe(
       "Shorthand for a recent time window ending at now. Cannot be combined with from/to."
     ),
-  from: z
-    .string()
-    .optional()
-    .describe(
-      "Start of time range (ISO 8601 format). Defaults to 24 hours ago. Ranges longer than 25 hours fall back to the default window, so use `period` ('2d', '7d', '8d') for anything wider."
-    ),
-  to: z
-    .string()
-    .optional()
-    .describe("End of time range (ISO 8601 format). Defaults to now."),
+  from: z.string().optional().describe(EXTENDED_FROM_DESCRIPTION),
+  to: z.string().optional().describe(EXTENDED_TO_DESCRIPTION),
 };
 
 // Filters accepted by the tag listing and the single-tag lookup. The summaries
@@ -312,7 +308,8 @@ async function fetchTagsAPI<T>(
 
     if (response.status === 400) {
       throw new PlanetScaleAPIError(
-        "Invalid request. Tag ids must keep the 'S' or 'B' prefix they were listed with by `list_query_tags`.",
+        apiErrorMessage(details) ??
+          "Invalid request. Tag ids must keep the 'S' or 'B' prefix they were listed with by `list_query_tags`.",
         response.status,
         details
       );
@@ -332,7 +329,8 @@ export const queryTagsGram = new Gram()
   .tool({
     name: "list_query_tags",
     description:
-      "List the query tags seen on a PlanetScale database branch's queries, with their values and query counts. Query tags are SQLCommenter-style annotations an application attaches in SQL comments (e.g. 'app', 'controller', 'route'), plus dimensions Insights derives from the connection itself (e.g. 'username', 'application_name'). Start here: the `id` values this returns are the only way to reach `get_query_tag` and `list_query_tag_summaries`, which is where query load actually gets attributed to a tag value. Each `id` keeps a one-character origin prefix -- 'S' for a tag the application submitted in a SQL comment (source: 'sql'), 'B' for one Insights captured itself (source: 'system') -- and `name` is the same id with the prefix stripped. Each value entry carries a `kind`: 'literal' is a real recorded value; 'overflow' is the synthetic 'Other' bucket aggregating values ranked beyond `values_limit`; 'collapsed' is the synthetic 'Collapsed' bucket counting queries where Insights had stopped recording this tag's values because it saw too many distinct ones, so those values are unrecoverable rather than zero. Data comes from PlanetScale Insights. Default time window is the last 24 hours; from/to ranges longer than 25 hours fall back to the default window server-side.",
+      "List the query tags seen on a PlanetScale database branch's queries, with their values and query counts. Query tags are SQLCommenter-style annotations an application attaches in SQL comments (e.g. 'app', 'controller', 'route'), plus dimensions Insights derives from the connection itself (e.g. 'username', 'application_name'). Start here: the `id` values this returns are the only way to reach `get_query_tag` and `list_query_tag_summaries`, which is where query load actually gets attributed to a tag value. Each `id` keeps a one-character origin prefix -- 'S' for a tag the application submitted in a SQL comment (source: 'sql'), 'B' for one Insights captured itself (source: 'system') -- and `name` is the same id with the prefix stripped. Each value entry carries a `kind`: 'literal' is a real recorded value; 'overflow' is the synthetic 'Other' bucket aggregating values ranked beyond `values_limit`; 'collapsed' is the synthetic 'Collapsed' bucket counting queries where Insights had stopped recording this tag's values because it saw too many distinct ones, so those values are unrecoverable rather than zero. Data comes from PlanetScale Insights. " +
+      EXTENDED_RANGE_NOTE,
     inputSchema: {
       ...branchInputSchema,
       ...tagFilterInputSchema,
@@ -375,7 +373,8 @@ export const queryTagsGram = new Gram()
   .tool({
     name: "get_query_tag",
     description:
-      "Fetch one query tag on a PlanetScale database branch, with its values and their query counts. Pass the `id` from `list_query_tags`, prefix included -- an unprefixed or unknown id returns a not-found error. Value entries carry the same `kind` ('literal', 'overflow', 'collapsed') as the listing. Use this to re-read a single tag's values under different filters -- a narrower time window, a specific fingerprint or keyspace, or `literal_values_only` -- without listing every tag on the branch again. Data comes from PlanetScale Insights. Default time window is the last 24 hours; from/to ranges longer than 25 hours fall back to the default window server-side.",
+      "Fetch one query tag on a PlanetScale database branch, with its values and their query counts. Pass the `id` from `list_query_tags`, prefix included -- an unprefixed or unknown id returns a not-found error. Value entries carry the same `kind` ('literal', 'overflow', 'collapsed') as the listing. Use this to re-read a single tag's values under different filters -- a narrower time window, a specific fingerprint or keyspace, or `literal_values_only` -- without listing every tag on the branch again. Data comes from PlanetScale Insights. " +
+      EXTENDED_RANGE_NOTE,
     inputSchema: {
       ...branchInputSchema,
       ...tagFilterInputSchema,
@@ -418,7 +417,8 @@ export const queryTagsGram = new Gram()
   .tool({
     name: "list_query_tag_summaries",
     description:
-      "Break query statistics on a PlanetScale database branch down by query tag value -- total time, latency, rows read, and errors per application, route, job, or user. This is the tool that answers 'which part of my app is causing this load', as opposed to `get_insights`, which answers 'which query'. Pass one or more tag `id` values from `list_query_tags` in `tags`; several ids group by the combination of their values. Each row's `dimensions` maps the grouped tag ids to that row's values. Rows are sorted descending by `sort_by` (default 'totalTime'). A curated set of metrics is requested by default; `fields` widens or narrows it, and the response echoes the effective set as a map from each requested name to the key it is serialized under, since the two differ (`count` arrives as `query_count`). Metrics outside that set are stripped, so a 0 on a returned metric is a real measurement rather than an unrequested field. The `sort_by` metric is always included, whether or not it was asked for. `dimension_counts` reports how many matched queries had the grouping tag's value collapsed (`collapsed_count`) out of the total (`total_count`) -- those queries carry the tag, but their value was never recorded and cannot be recovered. Data comes from PlanetScale Insights. Default time window is the last 24 hours; from/to ranges longer than 25 hours fall back to the default window server-side.",
+      "Break query statistics on a PlanetScale database branch down by query tag value -- total time, latency, rows read, and errors per application, route, job, or user. This is the tool that answers 'which part of my app is causing this load', as opposed to `get_insights`, which answers 'which query'. Pass one or more tag `id` values from `list_query_tags` in `tags`; several ids group by the combination of their values. Each row's `dimensions` maps the grouped tag ids to that row's values. Rows are sorted descending by `sort_by` (default 'totalTime'). A curated set of metrics is requested by default; `fields` widens or narrows it, and the response echoes the effective set as a map from each requested name to the key it is serialized under, since the two differ (`count` arrives as `query_count`). Metrics outside that set are stripped, so a 0 on a returned metric is a real measurement rather than an unrequested field. The `sort_by` metric is always included, whether or not it was asked for. `dimension_counts` reports how many matched queries had the grouping tag's value collapsed (`collapsed_count`) out of the total (`total_count`) -- those queries carry the tag, but their value was never recorded and cannot be recovered. Data comes from PlanetScale Insights. " +
+      EXTENDED_RANGE_NOTE,
     inputSchema: {
       ...branchInputSchema,
       tags: z

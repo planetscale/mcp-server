@@ -5,6 +5,8 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 import {
   errorMessage,
   INSIGHTS_PERIODS,
+  LEGACY_MAX_RANGE_HOURS,
+  LEGACY_RANGE_NOTE,
   resolveEnv,
   resultFields,
   type InsightsPeriod,
@@ -95,7 +97,7 @@ const commonInputSchema = {
     .string()
     .optional()
     .describe(
-      "Start of time range (ISO 8601 format). Defaults to 24 hours ago. Ranges longer than 25 hours fall back to the default window."
+      `Start of time range (ISO 8601 format). Defaults to 24 hours ago. These endpoints report individual query executions and do not serve the wide windows \`get_insights\` and the query tag tools do: a range longer than ${LEGACY_MAX_RANGE_HOURS} hours falls back to the default window instead of being rejected, which makes recent data look like a wide-window answer.`
     ),
   to: z
     .string()
@@ -227,7 +229,8 @@ export const queryErrorsGram = new Gram()
   .tool({
     name: "list_query_error_patterns",
     description:
-      "List failing queries for a PlanetScale database branch, aggregated by error fingerprint. Each pattern reports the error message, how many times it occurred, when it was last seen, and total/average duration. Use `list_query_error_executions` with an `error_fingerprint` from these results to see the individual failed executions behind a pattern. Data comes from PlanetScale Insights. Default time window is the last 24 hours; from/to ranges longer than 25 hours fall back to the default window server-side.",
+      "List failing queries for a PlanetScale database branch, aggregated by error fingerprint. Each pattern reports the error message, how many times it occurred, when it was last seen, and total/average duration. Use `list_query_error_executions` with an `error_fingerprint` from these results to see the individual failed executions behind a pattern. Data comes from PlanetScale Insights. " +
+      LEGACY_RANGE_NOTE,
     inputSchema: {
       ...commonInputSchema,
       query: z
@@ -287,7 +290,8 @@ export const queryErrorsGram = new Gram()
   .tool({
     name: "list_query_error_executions",
     description:
-      "List the individual captured query executions that failed with a given error fingerprint on a PlanetScale database branch. Each execution includes the normalized SQL, tables, keyspace, user, row counts, duration, error message, and query tags. Get an `error_fingerprint` from `list_query_error_patterns` first. This endpoint cannot filter by tablet type, so executions from all tablet types are returned even when the fingerprint came from a tablet-filtered pattern list. Data comes from PlanetScale Insights. Default time window is the last 24 hours; from/to ranges longer than 25 hours fall back to the default window server-side.",
+      "List the individual captured query executions that failed with a given error fingerprint on a PlanetScale database branch. Each execution includes the normalized SQL, tables, keyspace, user, row counts, duration, error message, and query tags. Get an `error_fingerprint` from `list_query_error_patterns` first. This endpoint cannot filter by tablet type, so executions from all tablet types are returned even when the fingerprint came from a tablet-filtered pattern list. Data comes from PlanetScale Insights. " +
+      LEGACY_RANGE_NOTE,
     inputSchema: {
       ...commonInputSchema,
       error_fingerprint: z

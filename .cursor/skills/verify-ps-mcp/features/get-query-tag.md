@@ -83,8 +83,8 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call get_query_tag \
 - There is no `limit` here either; `values_limit` (default 25, clamped 1–100) is
   the only cap, and it bounds literal values only — the `Other` and `Collapsed`
   buckets are returned on top of it.
-- `from`/`to` wider than 25 hours falls back to the last 24 hours
-  server-side. See the notes in
+- `from`/`to` wider than 25 hours must be hour-aligned and is rejected with a
+  400 when it is not. See the notes in
   [list-query-tags.md](./list-query-tags.md); the whole trio shares that
   behavior.
 - A 404 also covers Insights being disabled for the database, so confirm the
