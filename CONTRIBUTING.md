@@ -11,6 +11,10 @@
 - `package.json` - Defines project metadata, dependencies, and scripts.
 - `tsconfig.json` - TypeScript configuration file.
 
+## Adding New Tools
+
+New tools must also be registered in PlanetScale's OAuth tool-group catalog so users can grant them access when authorizing an MCP client. PlanetScale maintainers: follow the `add-mcp-tool-group` agent skill in the internal API repository.
+
 ## `package.json` scripts
 
 - `dev` - Runs the MCP Inspector playground with hot reloading enabled.
