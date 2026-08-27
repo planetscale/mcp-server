@@ -104,9 +104,11 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_tag_summaries \
 - This endpoint ignores `fingerprint`, `keyspace`, `values_limit`, and
   `literal_values_only`, which is why the tool does not offer them. `query` is a
   structured search DSL and the only way to narrow these summaries that way:
-  `fingerprint:<hash>`, `keyspace:<name>`, `tag:<name>=<value>`, `user:<name>`,
-  `statement_type:<type>`, `table:<name>`, `index:<name>`, comparisons like
-  `p99:>100`, a bare word matching normalized SQL, and `!` to negate a term.
+  `fingerprint:<hash>`, `keyspace:<name>`, `tag:<key>:<value>` (or `tag:<key>`
+  alone for any value), `user:<name>`, `statement_type:<type>`, `table:<name>`,
+  `index:<name>`, comparisons like `p99:>100`, a bare word matching normalized
+  SQL, and `!` to negate a term. The tag key here is the **bare** name, unlike
+  the `tags` param on this same tool, which needs the `S`/`B` prefix.
   Note this is a different meaning of the same underlying `q` param than
   `list_query_tags` uses, where it is a raw `LIKE` pattern.
 - An out-of-vocabulary `sort_by` or `fields` entry is refused by the input
@@ -142,8 +144,10 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_tag_summaries \
 - Responses are cached server-side for roughly half a minute. An immediate
   re-drive with different tags or fields comes back fresh, but re-driving the
   *same* call can return the previous answer.
-- `from`/`to` wider than 25 hours falls back to the last 24 hours
-  server-side — the whole trio shares this; see
+- `from`/`to` wider than 25 hours must be hour-aligned, and a 400 from a
+  misaligned range arrives through the same handler as a bad `tags[]` prefix —
+  the tool prefers the API's message, so read it rather than assuming which one
+  fired. The whole trio shares the range rules; see
   [list-query-tags.md](./list-query-tags.md).
 - A tag with a single value returns one row, which proves the plumbing but shows
   nothing about attribution. Pick a tag with several values.

@@ -67,7 +67,9 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_query_error_patterns \
   breaks.
 - `from`/`to` ranges longer than 25 hours silently fall back to the default
   24-hour window server-side, so a wide range that returns recent-looking data
-  is expected behavior, not a bug.
+  is expected behavior, not a bug. This is the one place the insights tools now
+  differ: these endpoints keep the 25-hour cap, while `get_insights` and the
+  query tag tools serve up to 365 days. Do not "fix" this one to match them.
 - `tablet_type` filters here but has no counterpart on the executions endpoint.
 - A branch with no errors in the window returns `patterns: []` with a 200. That
   is not a failing check; it is an unusable fixture. Pick a branch with errors.

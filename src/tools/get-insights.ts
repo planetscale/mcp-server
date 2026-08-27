@@ -2,7 +2,16 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { PlanetScaleAPIError, USER_AGENT } from "../lib/planetscale-api.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
-import { INSIGHTS_PERIODS } from "../lib/insights-tools.ts";
+import {
+  apiErrorMessage,
+  errorMessage,
+  EXTENDED_FROM_DESCRIPTION,
+  EXTENDED_RANGE_NOTE,
+  EXTENDED_TO_DESCRIPTION,
+  INSIGHTS_PERIODS,
+  isWideRange,
+  LEGACY_MAX_RANGE_HOURS,
+} from "../lib/insights-tools.ts";
 
 const API_BASE = "https://api.planetscale.com/v1";
 
@@ -215,6 +224,16 @@ const SELECTED_QUERY_FIELDS = [
   "tags",
 ] as const;
 
+/**
+ * The last instant of `date`'s hour, matching how the API rounds an omitted
+ * `to` up, so the reported window is the one the request actually covered.
+ */
+function endOfHour(date: Date): string {
+  const end = new Date(date);
+  end.setUTCMinutes(59, 59, 999);
+  return end.toISOString();
+}
+
 function isCapabilityGatedSortMetric(
   sortBy: SortMetric
 ): sortBy is CapabilityGatedSortMetric {
@@ -383,6 +402,17 @@ async function fetchInsights(
       );
     }
 
+    // A 400 here is almost always an unservable time range, and the API says
+    // exactly which rule was broken. Its wording beats anything guessable from
+    // the status alone.
+    if (response.status === 400) {
+      throw new PlanetScaleAPIError(
+        apiErrorMessage(details) ?? `Invalid insights request: ${response.statusText}`,
+        response.status,
+        details
+      );
+    }
+
     throw new PlanetScaleAPIError(
       `Failed to fetch insights: ${response.statusText}`,
       response.status,
@@ -542,6 +572,14 @@ async function fetchFingerprintSummary(
       );
     }
 
+    if (response.status === 400) {
+      throw new PlanetScaleAPIError(
+        apiErrorMessage(details) ?? `Invalid summary request: ${response.statusText}`,
+        response.status,
+        details
+      );
+    }
+
     throw new PlanetScaleAPIError(
       `Failed to fetch fingerprint summary: ${response.statusText}`,
       response.status,
@@ -631,7 +669,8 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only.",
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only. " +
+    `${EXTENDED_RANGE_NOTE} The individual executions in fingerprint mode are the exception: they are always limited to the last ${LEGACY_MAX_RANGE_HOURS} hours, so a wider fingerprint call returns a full-range \`summary\` next to executions from the last 24 hours, and the response says so.`,
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
@@ -666,12 +705,16 @@ export const getInsightsGram = new Gram().tool({
         'table:table_name, ' +
         'keyspace:keyspace_name, ' +
         'table_keyspace:keyspace_name, ' +
+        'tag:tag_key:tag_value for queries carrying that tag with that value, ' +
+        'tag:tag_key on its own for queries carrying the tag whatever its value (including ones whose value went unrecorded), ' +
+        'where tag_key is the bare tag name without the \'S\'/\'B\' prefix `list_query_tags` reports and a value containing spaces or colons needs quoting (tag:route:"GET /horses"), ' +
         'index:index_name or index:table.index_name, ' +
         'indexed:true|false, ' +
         'multishard:true|false, ' +
         'query_count:>N or query_count:<N, ' +
         'p99:>N or p50:<N (ms), ' +
         'max_latency:>N (ms). ' +
+        'Any term can be negated by an immediately preceding \'!\' (!tag:app:web). ' +
         'Ignored when fingerprint is provided.'
       ),
     fingerprint: z
@@ -696,13 +739,13 @@ export const getInsightsGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Start of time range (ISO 8601 format, e.g. '2026-03-09T00:00:00.000Z'). Defaults to 24 hours ago. Supported in both discovery and fingerprint modes."
+        `${EXTENDED_FROM_DESCRIPTION} Supported in both discovery and fingerprint modes, though in fingerprint mode only the summary honours a wide range.`
       ),
     to: z
       .string()
       .optional()
       .describe(
-        "End of time range (ISO 8601 format). Defaults to now. Supported in both discovery and fingerprint modes."
+        `${EXTENDED_TO_DESCRIPTION} Supported in both discovery and fingerprint modes.`
       ),
   },
   async execute(ctx, input) {
@@ -748,16 +791,22 @@ export const getInsightsGram = new Gram().tool({
       // Fingerprint mode: fetch summary stats + individual executions
       if (fingerprint) {
         const now = new Date();
-        const twentyFourHoursAgo = new Date(
-          now.getTime() - 24 * 60 * 60 * 1000
-        );
-        const from = input["from"] ?? twentyFourHoursAgo.toISOString();
-        const to = input["to"] ?? now.toISOString();
+        const wide = isWideRange(input["from"], input["to"]);
+        // Sending a `to` of "now" is fine inside the legacy window but breaks a
+        // wide one: the summary endpoint requires a range over
+        // LEGACY_MAX_RANGE_HOURS to cover whole hours, and rejects it outright
+        // otherwise. Left off, the API rounds the window up to the end of the
+        // current hour itself -- so drop it and report that same end below.
+        const openEnded = wide && !input["to"];
+        const from =
+          input["from"] ??
+          new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        const to = input["to"] ?? (openEnded ? endOfHour(now) : now.toISOString());
 
         const sharedOptions = {
           keyspace: input["keyspace"],
           from,
-          to,
+          ...(openEnded ? {} : { to }),
           tabletType,
         };
 
@@ -792,9 +841,24 @@ export const getInsightsGram = new Gram().tool({
           keyspace: input["keyspace"],
           from,
           to,
+          // Half the call failing used to be indistinguishable from a
+          // fingerprint with no data. It matters more now that a range the
+          // summary refuses is a thing a caller can ask for: without the
+          // reason, a rejected wide range reads as "no such query".
+          ...(summaryResult.status === "rejected"
+            ? { summary_error: errorMessage(summaryResult.reason) }
+            : {}),
           summary: summary ? filterSummary(summary) : null,
           executions: {
             total: executions.length,
+            ...(wide
+              ? {
+                  window_note: `Individual executions are capped at ${LEGACY_MAX_RANGE_HOURS} hours: these are the last 24 hours only, not the requested range. Only \`summary\` covers the full range.`,
+                }
+              : {}),
+            ...(entriesResult.status === "rejected"
+              ? { error: errorMessage(entriesResult.reason) }
+              : {}),
             queries: executions,
           },
         });
@@ -884,15 +948,7 @@ export const getInsightsGram = new Gram().tool({
         });
       }
     } catch (error) {
-      if (error instanceof PlanetScaleAPIError) {
-        return ctx.text(`Error: ${error.message} (status: ${error.statusCode})`);
-      }
-
-      if (error instanceof Error) {
-        return ctx.text(`Error: ${error.message}`);
-      }
-
-      return ctx.text(`Error: An unexpected error occurred`);
+      return ctx.text(errorMessage(error));
     }
   },
 });
