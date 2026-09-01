@@ -3,7 +3,7 @@ import test from "node:test";
 import gram from "../gram.ts";
 
 const expectedAnnotations = {
-  execute_read_query: [false, false, false],
+  execute_read_query: [true, false, false],
   execute_write_query: [false, true, false],
   get_insights: [true, false, false],
   get_postgres_logs: [true, false, false],
