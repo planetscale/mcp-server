@@ -196,6 +196,11 @@ export const getPostgresLogsGram = new Gram().tool({
   name: "get_postgres_logs",
   description:
     "Fetch server logs for a PlanetScale Postgres database branch (not available for Vitess/MySQL databases). Returns recent log entries sorted newest first. Supports filtering by log level, time range, server role, and pod name, plus an optional raw LogsQL query for advanced filtering (e.g. word matching, field filters, and pipe stages like 'error | stats count()'). Default time window is the last hour.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),

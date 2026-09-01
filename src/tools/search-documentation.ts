@@ -244,6 +244,11 @@ export const searchDocumentationGram = new Gram().tool({
   name: "search_documentation",
   description:
     "Search across the PlanetScale knowledge base to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
   inputSchema: {
     query: z.string().describe("Search query for PlanetScale docs"),
   },
