@@ -91,7 +91,8 @@ export const paymentMethodsGram = new Gram()
       "Start a secure Stripe Checkout session to add or replace an organization's billing card. Use when a customer asks to add, set, replace, or update their PlanetScale payment method. This tool never collects card details: return checkout_url to the customer and let them complete Stripe Checkout in their browser. It returns a setup_id; do not call this tool again while that setup is pending. After the customer finishes, call get_payment_method_setup with the same organization and setup_id. Requires full access to the organization's payment method.",
     annotations: {
       readOnlyHint: false,
-      destructiveHint: false,
+      // Preserve the hosted write classification while Claude review is pending.
+      destructiveHint: true,
       openWorldHint: true,
     },
     inputSchema: {
