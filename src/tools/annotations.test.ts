@@ -8,7 +8,7 @@ const expectedAnnotations = {
   get_insights: [true, false, false],
   get_postgres_logs: [true, false, false],
   list_cluster_sizes: [true, false, false],
-  update_payment_method: [false, false, true],
+  update_payment_method: [false, true, true],
   get_payment_method_setup: [true, false, false],
   list_query_error_patterns: [true, false, false],
   list_query_error_executions: [true, false, false],
