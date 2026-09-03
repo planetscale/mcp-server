@@ -331,6 +331,11 @@ export const queryTagsGram = new Gram()
     description:
       "List the query tags seen on a PlanetScale database branch's queries, with their values and query counts. Query tags are SQLCommenter-style annotations an application attaches in SQL comments (e.g. 'app', 'controller', 'route'), plus dimensions Insights derives from the connection itself (e.g. 'username', 'application_name'). Start here: the `id` values this returns are the only way to reach `get_query_tag` and `list_query_tag_summaries`, which is where query load actually gets attributed to a tag value. Each `id` keeps a one-character origin prefix -- 'S' for a tag the application submitted in a SQL comment (source: 'sql'), 'B' for one Insights captured itself (source: 'system') -- and `name` is the same id with the prefix stripped. Each value entry carries a `kind`: 'literal' is a real recorded value; 'overflow' is the synthetic 'Other' bucket aggregating values ranked beyond `values_limit`; 'collapsed' is the synthetic 'Collapsed' bucket counting queries where Insights had stopped recording this tag's values because it saw too many distinct ones, so those values are unrecoverable rather than zero. Data comes from PlanetScale Insights. " +
       EXTENDED_RANGE_NOTE,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       ...branchInputSchema,
       ...tagFilterInputSchema,
@@ -375,6 +380,11 @@ export const queryTagsGram = new Gram()
     description:
       "Fetch one query tag on a PlanetScale database branch, with its values and their query counts. Pass the `id` from `list_query_tags`, prefix included -- an unprefixed or unknown id returns a not-found error. Value entries carry the same `kind` ('literal', 'overflow', 'collapsed') as the listing. Use this to re-read a single tag's values under different filters -- a narrower time window, a specific fingerprint or keyspace, or `literal_values_only` -- without listing every tag on the branch again. Data comes from PlanetScale Insights. " +
       EXTENDED_RANGE_NOTE,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       ...branchInputSchema,
       ...tagFilterInputSchema,
@@ -419,6 +429,11 @@ export const queryTagsGram = new Gram()
     description:
       "Break query statistics on a PlanetScale database branch down by query tag value -- total time, latency, rows read, and errors per application, route, job, or user. This is the tool that answers 'which part of my app is causing this load', as opposed to `get_insights`, which answers 'which query'. Pass one or more tag `id` values from `list_query_tags` in `tags`; several ids group by the combination of their values. Each row's `dimensions` maps the grouped tag ids to that row's values. Rows are sorted descending by `sort_by` (default 'totalTime'). A curated set of metrics is requested by default; `fields` widens or narrows it, and the response echoes the effective set as a map from each requested name to the key it is serialized under, since the two differ (`count` arrives as `query_count`). Metrics outside that set are stripped, so a 0 on a returned metric is a real measurement rather than an unrequested field. The `sort_by` metric is always included, whether or not it was asked for. `dimension_counts` reports how many matched queries had the grouping tag's value collapsed (`collapsed_count`) out of the total (`total_count`) -- those queries carry the tag, but their value was never recorded and cannot be recovered. Data comes from PlanetScale Insights. " +
       EXTENDED_RANGE_NOTE,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       ...branchInputSchema,
       tags: z

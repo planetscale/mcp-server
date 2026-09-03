@@ -671,6 +671,11 @@ export const getInsightsGram = new Gram().tool({
   description:
     "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only. " +
     `${EXTENDED_RANGE_NOTE} The individual executions in fingerprint mode are the exception: they are always limited to the last ${LEGACY_MAX_RANGE_HOURS} hours, so a wider fingerprint call returns a full-range \`summary\` next to executions from the last 24 hours, and the response says so.`,
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: false,
+  },
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     database: z.string().describe("Database name"),
