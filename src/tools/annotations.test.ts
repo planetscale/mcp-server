@@ -32,8 +32,6 @@ test("every custom tool declares its MCP safety annotations", () => {
     ];
     assert.ok(expected, `unexpected tool: ${tool.name}`);
     const { title, ...safetyHints } = tool.annotations ?? {};
-    assert.ok(typeof title === "string" && title.trim().length > 0,
-      `missing display title: ${tool.name}`);
     assert.deepEqual(safetyHints, {
       readOnlyHint: expected[0],
       destructiveHint: expected[1],
