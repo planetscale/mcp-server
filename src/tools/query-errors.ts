@@ -232,6 +232,7 @@ export const queryErrorsGram = new Gram()
       "List failing queries for a PlanetScale database branch, aggregated by error fingerprint. Each pattern reports the error message, how many times it occurred, when it was last seen, and total/average duration. Use `list_query_error_executions` with an `error_fingerprint` from these results to see the individual failed executions behind a pattern. Data comes from PlanetScale Insights. " +
       LEGACY_RANGE_NOTE,
     annotations: {
+      title: "List query error patterns",
       readOnlyHint: true,
       destructiveHint: false,
       openWorldHint: false,
@@ -298,6 +299,7 @@ export const queryErrorsGram = new Gram()
       "List the individual captured query executions that failed with a given error fingerprint on a PlanetScale database branch. Each execution includes the normalized SQL, tables, keyspace, user, row counts, duration, error message, and query tags. Get an `error_fingerprint` from `list_query_error_patterns` first. This endpoint cannot filter by tablet type, so executions from all tablet types are returned even when the fingerprint came from a tablet-filtered pattern list. Data comes from PlanetScale Insights. " +
       LEGACY_RANGE_NOTE,
     annotations: {
+      title: "List failed query executions",
       readOnlyHint: true,
       destructiveHint: false,
       openWorldHint: false,

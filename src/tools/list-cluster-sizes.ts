@@ -245,6 +245,7 @@ export const listClusterSizesGram = new Gram().tool({
   description:
     "List available PlanetScale cluster sizes (SKUs) for an organization. PS-* sizes use autoscaling network-backed storage; M-* sizes use super fast NVMe storage drives. The rate field is for an HA cluster with 2 replicas; replica_rate is for a single instance. Single instance databases are only available for Postgres. Metal instances must be HA.",
   annotations: {
+    title: "List cluster sizes",
     readOnlyHint: true,
     destructiveHint: false,
     openWorldHint: false,
