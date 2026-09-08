@@ -115,6 +115,26 @@ interface PostgresQueryOptions {
   warnOnRls?: boolean;
 }
 
+export function postgresConnectionUrl(
+  credentials: PostgresCredentials,
+  databaseNameOverride?: string
+): string {
+  const nekiReplica =
+    credentials.replica && credentials.database_kind === "neki";
+  const username = credentials.replica && !nekiReplica
+    ? `${credentials.username}|replica`
+    : credentials.username;
+  const databaseName =
+    databaseNameOverride !== undefined && databaseNameOverride !== ""
+      ? databaseNameOverride
+      : credentials.database_name;
+  const replicaOptions = nekiReplica
+    ? `?options=${encodeURIComponent("-c __neki.target=REPLICA")}`
+    : "";
+
+  return `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(credentials.password)}@${credentials.host}:5432/${encodeURIComponent(databaseName)}${replicaOptions}`;
+}
+
 function isZeroLikeValue(value: unknown): boolean {
   if (typeof value === "number") return value === 0;
   if (typeof value === "bigint") return value === 0n;
@@ -227,17 +247,10 @@ export async function executePostgresQuery(
   // Configure Neon for PlanetScale Postgres connections
   neonConfig.fetchEndpoint = (host) => `https://${host}/sql`;
 
-  // Append |replica to username for replica routing if enabled
-  const username = credentials.replica
-    ? `${credentials.username}|replica`
-    : credentials.username;
-
-  const databaseName =
-    databaseNameOverride !== undefined && databaseNameOverride !== ""
-      ? databaseNameOverride
-      : credentials.database_name;
-
-  const connectionUrl = `postgresql://${encodeURIComponent(username)}:${encodeURIComponent(credentials.password)}@${credentials.host}:5432/${encodeURIComponent(databaseName)}`;
+  const connectionUrl = postgresConnectionUrl(
+    credentials,
+    databaseNameOverride
+  );
 
   const sql = neon(connectionUrl, {
     fetchOptions: { signal: AbortSignal.timeout(QUERY_TIMEOUT_MS) },

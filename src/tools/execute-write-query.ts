@@ -4,6 +4,7 @@ import {
   getDatabase,
   createVitessCredentials,
   createPostgresCredentials,
+  waitForPostgresRoleReady,
   deletePostgresRole,
   PlanetScaleAPIError,
 } from "../lib/planetscale-api.ts";
@@ -18,7 +19,7 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 export const executeWriteQueryGram = new Gram().tool({
   name: "execute_write_query",
   description:
-    "Execute a write SQL query (INSERT, UPDATE, DELETE, or DDL) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. Queries have a maximum execution time of 50 seconds — if a query exceeds this limit it will be cancelled, so ensure queries are optimized. TRUNCATE is blocked. DELETE and UPDATE without WHERE clause are blocked. For Postgres only: use postgres_database_name when the user has created additional databases in the same cluster and wants to run the query against a non-default database. IMPORTANT: DELETE queries and DDL statements (CREATE, DROP, ALTER, RENAME) require human confirmation - you MUST ask the user for explicit approval before setting confirm_destructive: true. Never set confirm_destructive without first showing the user the exact query and getting their explicit 'yes' or approval.",
+    "Execute a write SQL query (INSERT, UPDATE, DELETE, or DDL) against a PlanetScale database. This tool creates short-lived credentials and executes the query securely. Queries have a maximum execution time of 50 seconds — if a query exceeds this limit it will be cancelled, so ensure queries are optimized. TRUNCATE is blocked. DELETE and UPDATE without WHERE clause are blocked. For Postgres and Neki only: use postgres_database_name when the user has created additional databases in the same cluster and wants to run the query against a non-default database. IMPORTANT: DELETE queries and DDL statements (CREATE, DROP, ALTER, RENAME) require human confirmation - you MUST ask the user for explicit approval before setting confirm_destructive: true. Never set confirm_destructive without first showing the user the exact query and getting their explicit 'yes' or approval.",
   annotations: {
     title: "Run a write SQL query",
     readOnlyHint: false,
@@ -34,7 +35,7 @@ export const executeWriteQueryGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Postgres only: target database name to connect to. Use when the user has created additional databases in the same PlanetScale Postgres cluster (e.g. via CREATE DATABASE). Omit to use the default database for the branch."
+        "Postgres and Neki only: target database name to connect to. Use when the user has created additional databases in the same cluster (e.g. via CREATE DATABASE). Omit to use the default database for the branch."
       ),
     confirm_destructive: z
       .boolean()
@@ -84,8 +85,9 @@ export const executeWriteQueryGram = new Gram().tool({
 
       // Get database info to determine type
       const db = await getDatabase(organization, database, authHeader);
+      const databaseKind: string = db.kind;
 
-      if (db.kind === "mysql") {
+      if (databaseKind === "mysql") {
         // Vitess database - create password with admin role for DDL support
         const credentials = await createVitessCredentials(
           organization,
@@ -97,8 +99,11 @@ export const executeWriteQueryGram = new Gram().tool({
 
         const result = await executeVitessQuery(credentials, query);
         return ctx.json(result);
-      } else {
-        // Postgres database - create role with full permissions including DDL
+      } else if (
+        databaseKind === "postgresql" ||
+        databaseKind === "neki"
+      ) {
+        // Postgres/Neki database - create role with full permissions including DDL
         // - 'postgres' provides full access to the database
         // - 'pg_write_all_data' provides write access to all tables
         // - 'pg_maintain' (Postgres 17+) allows maintenance operations (CREATE INDEX,
@@ -110,6 +115,18 @@ export const executeWriteQueryGram = new Gram().tool({
           ["postgres", "pg_write_all_data", "pg_maintain"],
           authHeader
         );
+        credentials.database_kind = databaseKind;
+
+        if (databaseKind === "neki") {
+          await waitForPostgresRoleReady(
+            organization,
+            database,
+            branch,
+            credentials,
+            authHeader,
+            ctx.signal
+          );
+        }
 
         const postgresDatabaseName = input["postgres_database_name"];
         const result = await executePostgresQuery(
@@ -133,6 +150,8 @@ export const executeWriteQueryGram = new Gram().tool({
 
         return ctx.json(result);
       }
+
+      return ctx.text(`Error: Unsupported database kind: ${databaseKind}`);
     } catch (error) {
       if (error instanceof QueryTimeoutError) {
         return ctx.text(`Error: ${error.message}`);
