@@ -300,7 +300,9 @@ function getBranchCapabilities(branch: BranchMetadata): BranchCapabilities {
 
   return {
     kind,
-    cpu_timing: branch.insights_cpu_timing ?? kind === "postgresql",
+    cpu_timing:
+      branch.insights_cpu_timing ??
+      (kind === "postgresql" || kind === "neki"),
     io_timing:
       branch.insights_io_timing ?? (kind === "postgresql" && trackIoTiming),
     egress_bytes: branch.insights_egress_bytes ?? true,
@@ -320,7 +322,7 @@ function unsupportedSortMessage(
   switch (sortBy) {
     case "cpuTime":
       if (capabilities.cpu_timing) return null;
-      return `cpuTime is only available for Postgres branches. This branch is ${formatBranchKind(capabilities.kind)}; use totalTime, count, rowsRead, rowsReadPerReturned, or egressBytes instead.`;
+      return `cpuTime is only available for Postgres and Neki branches. This branch is ${formatBranchKind(capabilities.kind)}; use totalTime, count, rowsRead, rowsReadPerReturned, or egressBytes instead.`;
     case "maxEgressBytes":
       if (capabilities.max_egress_bytes) return null;
       return `maxEgressBytes is only available for MySQL branches. This branch is ${formatBranchKind(capabilities.kind)}; use egressBytes or egressBytesPerQuery instead.`;
@@ -669,7 +671,7 @@ async function fetchSelectedQueries(
 export const getInsightsGram = new Gram().tool({
   name: "get_insights",
   description:
-    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only. " +
+    "Get query performance insights for a PlanetScale database branch. By default, aggregates the top queries across curated metrics (slowest, most time-consuming, most rows read, most inefficient, most rows affected, and highest egress) for a comprehensive view. Can also fetch queries sorted by a single metric. Supports filtering by tablet type (primary/replica). To drill down into a specific query pattern, first call without fingerprint to discover queries (each result includes a `fingerprint` and `keyspace`), then call again with both `fingerprint` and `keyspace` from that result to get the aggregated summary stats and individual executions. Note: egress_bytes and ingress_bytes values are raw bytes; the PlanetScale UI displays these as binary megabytes (1 MB = 2^20 bytes). Durations (sum_total_duration_millis) are in milliseconds. cpuTime is available for Postgres and Neki branches only; maxEgressBytes and ingressBytes/ingressBytesPerQuery/maxIngressBytes are available for MySQL/Vitess branches only. " +
     `${EXTENDED_RANGE_NOTE} The individual executions in fingerprint mode are the exception: they are always limited to the last ${LEGACY_MAX_RANGE_HOURS} hours, so a wider fingerprint call returns a full-range \`summary\` next to executions from the last 24 hours, and the response says so.`,
   annotations: {
     title: "Get query performance insights",
@@ -685,7 +687,7 @@ export const getInsightsGram = new Gram().tool({
       .enum(["all", ...SORT_METRICS])
       .optional()
       .describe(
-        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes'. 'cpuTime' is Postgres-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
+        "Sort order: 'all' (default) aggregates curated API calls for a comprehensive view, or specify a single metric: 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'p99Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsReadPerReturned', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes'. 'cpuTime' is Postgres/Neki-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
       ),
     limit: z
       .number()
@@ -699,7 +701,7 @@ export const getInsightsGram = new Gram().tool({
       .array(z.string())
       .optional()
       .describe(
-        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes', 'indexes', 'maxShardQueries']). 'cpuTime' is Postgres-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
+        "Request specific metric fields from the API (e.g. ['query', 'count', 'percentTime', 'totalTime', 'cpuTime', 'p50Latency', 'rowsRead', 'rowsReadPerQuery', 'rowsAffected', 'egressBytes', 'egressBytesPerQuery', 'maxEgressBytes', 'ingressBytes', 'ingressBytesPerQuery', 'maxIngressBytes', 'indexes', 'maxShardQueries']). 'cpuTime' is Postgres/Neki-only; 'maxEgressBytes' and ingress* are MySQL/Vitess-only. Ignored when fingerprint is provided."
       ),
     query: z
       .string()
@@ -733,7 +735,7 @@ export const getInsightsGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Keyspace for fingerprint drill-down. Required to get summary data. Use the `keyspace` value returned in insights results (e.g. 'my_keyspace' for MySQL/Vitess or 'postgres.public' for Postgres databases)."
+        "Keyspace for fingerprint drill-down. Required to get summary data. Use the `keyspace` value returned in insights results (e.g. 'my_keyspace' for MySQL/Vitess or 'postgres.public' for Postgres/Neki databases)."
       ),
     period: z
       .enum(INSIGHTS_PERIODS)
