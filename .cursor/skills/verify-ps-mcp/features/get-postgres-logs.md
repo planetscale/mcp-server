@@ -1,11 +1,12 @@
-# Postgres logs (`get_postgres_logs`)
+# Postgres and Neki logs (`get_postgres_logs`)
 
 Source: `src/tools/get-postgres-logs.ts`, signature call in
 `src/lib/planetscale-api.ts` (`createLogSignature`)
 
-Answers "what is this Postgres branch's server actually doing". Returns recent
-log entries newest-first, filterable by log level, time window, server role,
-and pod name, plus an optional raw LogsQL filter that may carry pipe stages. Postgres/Neki only: the tool takes two hops, first POSTing to
+Answers "what is this Postgres or Neki branch's server actually doing". Returns
+recent log entries newest-first, filterable by log level, time window, server
+role, and pod name, plus an optional raw LogsQL filter that may carry pipe
+stages. Postgres/Neki only: the tool takes two hops, first POSTing to
 `/logs/signatures` for a signed URL, then fetching NDJSON from that URL, and a
 Vitess/MySQL branch has no signature to issue.
 

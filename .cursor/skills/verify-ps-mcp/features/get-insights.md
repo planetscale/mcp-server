@@ -31,6 +31,14 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
   --expect '"ingress_bytes"' --label insights-ingress-vitess
 ```
 
+Single metric, Neki CPU time:
+
+```bash
+node .cursor/skills/verify-ps-mcp/drive.mjs call get_insights \
+  '{"organization":"YOUR_ORG","database":"NEKI_DATABASE","branch":"main","sort_by":"cpuTime","limit":3,"period":"1d"}' \
+  --expect '"sort_by":"cpuTime"' --label insights-cpu-neki
+```
+
 Drill-down, using a `fingerprint` and `keyspace` copied from a discovery run:
 
 ```bash

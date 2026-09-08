@@ -26,6 +26,12 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call list_cluster_sizes \
   --expect '"type":"metal"' --label sizes-metal
 ```
 
+```bash
+node .cursor/skills/verify-ps-mcp/drive.mjs call list_cluster_sizes \
+  '{"organization":"YOUR_ORG","engine":"neki"}' \
+  --expect '"engine":"neki"' --label sizes-neki
+```
+
 ## Proves it works
 
 - `cluster_sizes` is non-empty and `total_tiers` matches its length.
