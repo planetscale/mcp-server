@@ -4,6 +4,7 @@ import {
   getBranch,
   createVitessCredentials,
   createPostgresCredentials,
+  waitForPostgresRoleReady,
   deleteVitessPassword,
   deletePostgresRole,
   PlanetScaleAPIError,
@@ -18,7 +19,7 @@ import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 export const executeReadQueryGram = new Gram().tool({
   name: "execute_read_query",
   description:
-    "Execute a read-only SQL query against a PlanetScale database. Write operations are rejected by the database role. This tool creates short-lived credentials and executes the query securely. Queries have a maximum execution time of 50 seconds — if a query exceeds this limit it will be cancelled, so ensure queries are optimized. For Postgres, this tool uses an ephemeral pg_read_all_data role that does not bypass row-level security (RLS); zero-row or zero-count results on RLS-protected tables may mean rows are hidden by policy, and the response may include warnings when that risk is detected. For Postgres only: optionally specify postgres_database_name when the user wants to query a non-default database.",
+    "Execute a read-only SQL query against a PlanetScale database. Write operations are rejected by the database role. This tool creates short-lived credentials and executes the query securely. Queries have a maximum execution time of 50 seconds — if a query exceeds this limit it will be cancelled, so ensure queries are optimized. For Postgres and Neki, this tool uses an ephemeral pg_read_all_data role that does not bypass row-level security (RLS); zero-row or zero-count results on RLS-protected tables may mean rows are hidden by policy, and the response may include warnings when that risk is detected. For Postgres and Neki only: optionally specify postgres_database_name when the user wants to query a non-default database.",
   annotations: {
     title: "Run a read-only SQL query",
     readOnlyHint: true,
@@ -34,7 +35,7 @@ export const executeReadQueryGram = new Gram().tool({
       .string()
       .optional()
       .describe(
-        "Postgres only: target database name to connect to. Use when the user has created additional databases in the same PlanetScale Postgres cluster (e.g. via CREATE DATABASE). Omit to use the default database for the branch."
+        "Postgres and Neki only: target database name to connect to. Use when the user has created additional databases in the same cluster (e.g. via CREATE DATABASE). Omit to use the default database for the branch."
       ),
     use_replica: z
       .boolean()
@@ -74,11 +75,12 @@ export const executeReadQueryGram = new Gram().tool({
 
       // Get branch info to determine database type and replica availability
       const branchInfo = await getBranch(organization, database, branch, authHeader);
+      const branchKind: string = branchInfo.kind;
       // Route to a replica only when the caller allows it and the branch has replicas
       const useReplicaParam = input["use_replica"] ?? true;
       const useReplica = useReplicaParam && branchInfo.has_replicas;
 
-      if (branchInfo.kind === "mysql") {
+      if (branchKind === "mysql") {
         // Vitess database - create password with reader role
         // Use replica if available for safer read performance
         const credentials = await createVitessCredentials(
@@ -102,8 +104,11 @@ export const executeReadQueryGram = new Gram().tool({
         );
 
         return ctx.json(result);
-      } else {
-        // Postgres database - create role with read permissions.
+      } else if (
+        branchKind === "postgresql" ||
+        branchKind === "neki"
+      ) {
+        // Postgres/Neki database - create role with read permissions.
         // pg_read_all_data still obeys row-level security policies.
         const credentials = await createPostgresCredentials(
           organization,
@@ -112,8 +117,19 @@ export const executeReadQueryGram = new Gram().tool({
           ["pg_read_all_data"],
           authHeader
         );
-        // Set replica flag for query execution
+        credentials.database_kind = branchKind;
         credentials.replica = useReplica;
+
+        if (branchKind === "neki") {
+          await waitForPostgresRoleReady(
+            organization,
+            database,
+            branch,
+            credentials,
+            authHeader,
+            ctx.signal
+          );
+        }
 
         const postgresDatabaseName = input["postgres_database_name"];
         const result = await executePostgresQuery(
@@ -134,6 +150,8 @@ export const executeReadQueryGram = new Gram().tool({
 
         return ctx.json(result);
       }
+
+      return ctx.text(`Error: Unsupported database kind: ${branchKind}`);
     } catch (error) {
       if (error instanceof QueryTimeoutError) {
         return ctx.text(`Error: ${error.message}`);

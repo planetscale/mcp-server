@@ -1,9 +1,14 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 const API_BASE = "https://api.planetscale.com/v1";
+const POSTGRES_ROLE_TTL_SECONDS = 180;
+const ROLE_READY_POLL_INTERVAL_MS = 1_000;
+const ROLE_READY_TIMEOUT_MS = 60_000;
 
 /** Identifies MCP server traffic to the PlanetScale API. */
 export const USER_AGENT = "planetscale-mcp";
 
-export type DatabaseKind = "mysql" | "postgresql";
+export type DatabaseKind = "mysql" | "postgresql" | "neki";
 
 export interface Database {
   id: string;
@@ -63,11 +68,13 @@ export interface PostgresCredentials {
   password: string;
   host: string;
   database_name: string;
+  ready: boolean;
   branch: {
     name: string;
     id: string;
   };
   replica?: boolean;
+  database_kind?: Extract<DatabaseKind, "postgresql" | "neki">;
 }
 
 export interface LogSignature {
@@ -161,7 +168,7 @@ async function apiRequest<T>(
 }
 
 /**
- * Get database information including its type (mysql/vitess or postgresql)
+ * Get database information including its type (mysql/vitess, postgresql, or neki)
  */
 export async function getDatabase(
   organization: string,
@@ -311,6 +318,7 @@ export async function createPostgresCredentials(
     password: string;
     access_host_url: string;
     database_name: string;
+    ready: boolean;
     branch: {
       name: string;
       id: string;
@@ -323,7 +331,7 @@ export async function createPostgresCredentials(
       body: JSON.stringify({
         name,
         inherited_roles: inheritedRoles,
-        ttl: 60, // 60 seconds TTL
+        ttl: POSTGRES_ROLE_TTL_SECONDS,
       }),
     }
   );
@@ -334,8 +342,55 @@ export async function createPostgresCredentials(
     password: response.password,
     host: response.access_host_url,
     database_name: response.database_name,
+    ready: response.ready,
     branch: response.branch,
   };
+}
+
+export async function waitForPostgresRoleReady(
+  organization: string,
+  database: string,
+  branch: string,
+  credentials: PostgresCredentials,
+  authHeader: string,
+  signal?: AbortSignal,
+  options: {
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+  } = {}
+): Promise<PostgresCredentials> {
+  if (credentials.ready) return credentials;
+
+  const timeoutSignal = AbortSignal.timeout(
+    options.timeoutMs ?? ROLE_READY_TIMEOUT_MS
+  );
+  const pollSignal = signal
+    ? AbortSignal.any([signal, timeoutSignal])
+    : timeoutSignal;
+
+  try {
+    while (!credentials.ready) {
+      await delay(options.pollIntervalMs ?? ROLE_READY_POLL_INTERVAL_MS, undefined, {
+        signal: pollSignal,
+      });
+
+      const role = await apiRequest<{ ready: boolean }>(
+        `/organizations/${encodeURIComponent(organization)}/databases/${encodeURIComponent(database)}/branches/${encodeURIComponent(branch)}/roles/${encodeURIComponent(credentials.id)}`,
+        authHeader,
+        { signal: pollSignal }
+      );
+      credentials.ready = role.ready;
+    }
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      throw new Error(
+        `Database role did not become ready within ${(options.timeoutMs ?? ROLE_READY_TIMEOUT_MS) / 1000} seconds.`
+      );
+    }
+    throw error;
+  }
+
+  return credentials;
 }
 
 /**

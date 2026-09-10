@@ -85,7 +85,7 @@ function formatRate(rate: number | null): string | null {
  */
 async function fetchClusterSizeSkus(
   organization: string,
-  engine: "mysql" | "postgresql",
+  engine: "mysql" | "postgresql" | "neki",
   authHeader: string
 ): Promise<ClusterSizeSkuRaw[]> {
   const url = `${API_BASE}/organizations/${encodeURIComponent(organization)}/cluster-size-skus?engine=${engine}&rates=true`;
@@ -243,7 +243,7 @@ function buildTierSummaries(
 export const listClusterSizesGram = new Gram().tool({
   name: "list_cluster_sizes",
   description:
-    "List available PlanetScale cluster sizes (SKUs) for an organization. PS-* sizes use autoscaling network-backed storage; M-* sizes use super fast NVMe storage drives. The rate field is for an HA cluster with 2 replicas; replica_rate is for a single instance. Single instance databases are only available for Postgres. Metal instances must be HA.",
+    "List available PlanetScale cluster sizes (SKUs) for an organization and database engine, including Neki-specific PS-*_NEKI sizes. PS-* sizes use autoscaling network-backed storage; M-* sizes use super fast NVMe storage drives. The rate field is for an HA cluster with 2 replicas; replica_rate is for a single instance. Single instance databases are only available for Postgres. Metal instances must be HA.",
   annotations: {
     title: "List cluster sizes",
     readOnlyHint: true,
@@ -253,7 +253,7 @@ export const listClusterSizesGram = new Gram().tool({
   inputSchema: {
     organization: z.string().describe("PlanetScale organization name"),
     engine: z
-      .enum(["mysql", "postgresql"])
+      .enum(["mysql", "postgresql", "neki"])
       .optional()
       .describe("Database engine to list SKUs for (default: mysql)"),
     type: z
@@ -280,7 +280,10 @@ export const listClusterSizesGram = new Gram().tool({
         return ctx.text("Error: organization is required.");
       }
 
-      const engine = (input["engine"] ?? "mysql") as "mysql" | "postgresql";
+      const engine = (input["engine"] ?? "mysql") as
+        | "mysql"
+        | "postgresql"
+        | "neki";
       const typeFilter = input["type"] as "autoscaling" | "metal" | undefined;
       const authHeader = getAuthHeader(env);
 

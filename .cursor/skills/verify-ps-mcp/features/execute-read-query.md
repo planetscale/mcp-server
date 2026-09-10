@@ -5,8 +5,9 @@ and `src/lib/planetscale-api.ts`
 
 Runs a read-only SQL query against a branch. The tool mints short-lived
 credentials (a Vitess `reader` password, or a Postgres role with
-`pg_read_all_data`), runs the query, then deletes the credential. Reads prefer a
-replica when the branch has one, unless `use_replica: false`.
+`pg_read_all_data` for Postgres/Neki), runs the query, then deletes the
+credential. Reads prefer a replica when the branch has one, unless
+`use_replica: false`.
 
 ## Reach it
 
@@ -31,6 +32,14 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call execute_read_query \
   --expect 'ok' --label read-postgres
 ```
 
+Neki (also proves async role readiness and Neki replica routing):
+
+```bash
+node .cursor/skills/verify-ps-mcp/drive.mjs call execute_read_query \
+  '{"organization":"YOUR_ORG","database":"NEKI_DATABASE","branch":"main","query":"SELECT 1 AS ok"}' \
+  --expect 'ok' --label read-neki
+```
+
 Forcing the primary:
 
 ```bash
@@ -42,7 +51,8 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call execute_read_query \
 ## Proves it works
 
 - The result carries the queried rows, not just a success flag.
-- Both engines work; they take different code paths from the same tool.
+- All three engines work; Neki shares the Postgres protocol but has a distinct
+  readiness and replica-routing path.
 - The credential lifecycle completed. A leaked password or role is the real
   failure mode here, and it is invisible in the tool response — check the
   branch's passwords/roles in the PlanetScale UI or API after a run that

@@ -105,6 +105,28 @@ test("a range is wide only once it passes the legacy cap", () => {
   assert.equal(isWideRange("last tuesday", undefined), false);
 });
 
+test("Neki branches support the cpuTime metric fallback", async () => {
+  process.env["PLANETSCALE_OAUTH2_ACCESS_TOKEN"] = "oauth-token";
+  stubFetch((url) =>
+    url.pathname.endsWith("/branches/main")
+      ? Response.json({ kind: "neki" })
+      : Response.json({ data: [] })
+  );
+
+  const response = await getInsightsGram.handleToolCall({
+    name: "get_insights",
+    input: { ...branch, sort_by: "cpuTime" },
+  });
+  const result = (await response.json()) as {
+    mode: string;
+    branch_capabilities: { cpu_timing: boolean; io_timing: boolean };
+  };
+
+  assert.equal(result.mode, "single_metric");
+  assert.equal(result.branch_capabilities.cpu_timing, true);
+  assert.equal(result.branch_capabilities.io_timing, false);
+});
+
 test("fingerprint mode keeps sending an explicit to inside the legacy window", async () => {
   process.env["PLANETSCALE_OAUTH2_ACCESS_TOKEN"] = "oauth-token";
   const request = stubFetch(respondBoth);
