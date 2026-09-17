@@ -2,6 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { searchPlanetScaleBlogs } from "../lib/blog-search.ts";
 
 const DEFAULT_MCP_URL = "https://planetscale.com/docs/mcp";
 
@@ -243,7 +244,7 @@ function getDocsMcpUrl(env: Record<string, string | undefined>): string {
 export const searchDocumentationGram = new Gram().tool({
   name: "search_documentation",
   description:
-    "Search across the PlanetScale knowledge base to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to the documentation pages.",
+    "Search across PlanetScale documentation and blog posts to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to documentation pages and /blog posts.",
   annotations: {
     title: "Search PlanetScale documentation",
     readOnlyHint: true,
@@ -251,7 +252,9 @@ export const searchDocumentationGram = new Gram().tool({
     openWorldHint: false,
   },
   inputSchema: {
-    query: z.string().describe("Search query for PlanetScale docs"),
+    query: z
+      .string()
+      .describe("Search query for PlanetScale docs and blog posts"),
   },
   async execute(ctx, input) {
     const env =
@@ -260,6 +263,11 @@ export const searchDocumentationGram = new Gram().tool({
         : process.env;
 
     let transport: StreamableHTTPClientTransport | undefined;
+    // Start the blog fetch alongside the docs MCP round-trip so a feed/sitemap
+    // lookup does not add a serial hop. A blog failure must not hide docs.
+    const blogPromise = searchPlanetScaleBlogs(input.query, {
+      signal: ctx.signal,
+    }).catch(() => []);
 
     try {
       const mcpUrl = getDocsMcpUrl(env);
@@ -273,9 +281,11 @@ export const searchDocumentationGram = new Gram().tool({
         arguments: { query: input.query },
       });
 
-      const normalizedResults = result.structuredContent
+      const docsResults = result.structuredContent
         ? extractResultsFromStructuredContent(result.structuredContent)
         : extractResultsFromContent(result.content);
+      const blogResults = await blogPromise;
+      const normalizedResults = [...blogResults, ...docsResults];
 
       return ctx.json({
         results: normalizedResults,
