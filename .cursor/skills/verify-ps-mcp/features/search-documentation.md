@@ -87,11 +87,9 @@ cp /tmp/env.backup .env
   quietly ignored.
 - Upstream returns one `type: "text"` block per hit, shaped as `Title:`/`Link:`/
   `Page:` header lines then a `Content:` body running to the end of the block.
-  `parseDocsTextBlock` reads that format and is unit-tested in
-  `src/tools/search-documentation.test.ts`; the `structuredContent` and
+  `parseDocsTextBlock` reads that format; the `structuredContent` and
   `resource_link` normalizers are kept as fallbacks for the next shape change.
 - Upstream also exposes `query_docs_filesystem_planet_scale`, which `head`s or
   `cat`s a full page by path, and `submit_feedback`. Neither is wrapped here.
-- Blog search is implemented in `src/lib/blog-search.ts` and unit-tested there.
-  A blog feed or sitemap outage returns no blog hits; it does not fail the
+- A blog feed or sitemap outage returns no blog hits; it does not fail the
   tool, because docs remain the primary source.
