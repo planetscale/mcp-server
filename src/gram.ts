@@ -3,6 +3,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { executeReadQueryGram } from "./tools/execute-read-query.ts";
 import { executeWriteQueryGram } from "./tools/execute-write-query.ts";
+import { getBranchMetricsGram } from "./tools/get-branch-metrics.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { getPostgresLogsGram } from "./tools/get-postgres-logs.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
@@ -27,6 +28,7 @@ const gram = new Gram({
 })
   .extend(executeReadQueryGram)
   .extend(executeWriteQueryGram)
+  .extend(getBranchMetricsGram)
   .extend(getInsightsGram)
   .extend(getPostgresLogsGram)
   .extend(listClusterSizesGram)

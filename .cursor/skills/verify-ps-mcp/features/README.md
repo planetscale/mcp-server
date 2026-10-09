@@ -8,6 +8,7 @@ touched others. Check this list before claiming a change is verified.
 
 | Feature | File | Needs auth | Safe to drive |
 | --- | --- | --- | --- |
+| Branch metrics | [get-branch-metrics.md](./get-branch-metrics.md) | yes | yes, read-only |
 | Query Insights | [get-insights.md](./get-insights.md) | yes | yes, read-only |
 | Postgres logs | [get-postgres-logs.md](./get-postgres-logs.md) | yes | yes, read-only |
 | Query error patterns | [list-query-error-patterns.md](./list-query-error-patterns.md) | yes | yes, read-only |
