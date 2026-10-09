@@ -13,20 +13,28 @@ import {
   summarizePoints,
 } from "./get-branch-metrics.ts";
 
-test("summarizePoints reports latest, min, avg, and max and skips non-finite samples", () => {
+test("summarizePoints reports latest, min, avg, p95, and max and skips non-finite samples", () => {
+  const stats = summarizePoints([
+    [1, 1],
+    [2, Number.NaN],
+    [3, Number.POSITIVE_INFINITY],
+    [4],
+    [5, 3],
+    [6, 5],
+  ]);
   assert.deepEqual(
-    summarizePoints([
-      [1, 1],
-      [2, Number.NaN],
-      [3, Number.POSITIVE_INFINITY],
-      [4],
-      [5, 3],
-      [6, 5],
-    ]),
-    { latest: 5, min: 1, avg: 3, max: 5 },
+    stats && { ...stats, p95: roundMetricValue(stats.p95) },
+    { latest: 5, min: 1, avg: 3, p95: 4.8, max: 5 },
   );
 });
 
+test("summarizePoints p95 ignores a short spike", () => {
+  const points = Array.from({ length: 100 }, (_, index) => [index, index + 1]);
+  points[99] = [99, 1000];
+  const stats = summarizePoints(points);
+  assert.equal(stats?.p95, 95.05);
+  assert.equal(stats?.max, 1000);
+});
 test("summarizePoints returns null when every sample is unusable", () => {
   assert.equal(summarizePoints([[1], [2, Number.NaN]]), null);
   assert.equal(summarizePoints([]), null);
@@ -235,6 +243,7 @@ test("rollupSummarySeries drops pod names and keeps the busiest row", () => {
       latest: 0,
       min: 0,
       avg: 0,
+      p95: 0,
       max: 0,
     },
     {
@@ -245,12 +254,14 @@ test("rollupSummarySeries drops pod names and keeps the busiest row", () => {
       latest: 4,
       min: 1,
       avg: 2,
+      p95: 7,
       max: 9,
     },
   ]);
   assert.equal(rolled.length, 1);
   assert.deepEqual(rolled[0]?.labels, { shard: "sh1" });
   assert.equal(rolled[0]?.latest, 4);
+  assert.equal(rolled[0]?.p95, 7);
   assert.equal(rolled[0]?.max, 9);
   assert.equal(rolled[0]?.series_count, 2);
   assert.equal("pod" in (rolled[0]?.labels ?? {}), false);
@@ -272,6 +283,7 @@ test("alignSeries emits a null row when a requested metric has no series", () =>
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.metric, "planetscale_pods_container_ooms");
   assert.equal(rows[0]?.latest, null);
+  assert.equal(rows[0]?.p95, null);
   assert.equal(rows[0]?.unit, "count");
 });
 
