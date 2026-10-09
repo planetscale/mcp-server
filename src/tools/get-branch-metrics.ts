@@ -2,7 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { getAuthHeader, getAuthToken } from "../lib/auth.ts";
 import {
-  getDatabase,
+  getBranch,
   PlanetScaleAPIError,
   USER_AGENT,
   type DatabaseKind,
@@ -385,9 +385,40 @@ export function summarizePoints(points: number[][]): SeriesStats | null {
   };
 }
 
-export function capSeries<T>(series: T[]): { series: T[]; truncated: boolean } {
+/**
+ * Keep at most SERIES_CAP rows. Extra rows are shared across metrics so one
+ * wide metric (a shard per row) cannot drop later summary metrics.
+ */
+export function capSeries<T extends { metric: string }>(
+  series: T[],
+): { series: T[]; truncated: boolean } {
   if (series.length <= SERIES_CAP) return { series, truncated: false };
-  return { series: series.slice(0, SERIES_CAP), truncated: true };
+  const groups = new Map<string, T[]>();
+  for (const row of series) {
+    const list = groups.get(row.metric) ?? [];
+    list.push(row);
+    groups.set(row.metric, list);
+  }
+  const names = [...groups.keys()];
+  const kept = new Map(names.map((name) => [name, 0]));
+  let remaining = SERIES_CAP;
+  let progressed = true;
+  while (remaining > 0 && progressed) {
+    progressed = false;
+    for (const name of names) {
+      if (remaining === 0) break;
+      const count = kept.get(name) ?? 0;
+      if (count >= (groups.get(name)?.length ?? 0)) continue;
+      kept.set(name, count + 1);
+      remaining--;
+      progressed = true;
+    }
+  }
+  const capped: T[] = [];
+  for (const name of names) {
+    capped.push(...(groups.get(name) ?? []).slice(0, kept.get(name) ?? 0));
+  }
+  return { series: capped, truncated: true };
 }
 
 /** Unit string for tablet and other names that are not in the branch catalog. */
@@ -866,8 +897,9 @@ export const getBranchMetricsGram = new Gram().tool({
       if (typeof steps === "object") return ctx.text(`Error: ${steps.error}`);
 
       const authHeader = getAuthHeader(env);
-      const databaseInfo = await getDatabase(organization, database, authHeader);
-      const kind = databaseInfo.kind;
+      // Branch kind uses read_branch, the same scope as the metrics endpoints.
+      const branchInfo = await getBranch(organization, database, branch, authHeader);
+      const kind = branchInfo.kind;
 
       const plan = planMetricRequests(kind, view, input.metrics, input.workflow);
       if ("error" in plan) return ctx.text(`Error: ${plan.error}`);

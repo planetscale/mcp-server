@@ -33,16 +33,30 @@ test("summarizePoints returns null when every sample is unusable", () => {
 });
 
 test("capSeries keeps forty series and flags the rest", () => {
-  const rows = Array.from({ length: 41 }, (_, index) => index);
+  const rows = Array.from({ length: 41 }, (_, index) => ({ metric: "cpu", index }));
   const capped = capSeries(rows);
   assert.equal(capped.truncated, true);
   assert.equal(capped.series.length, 40);
-  assert.equal(capped.series[0], 0);
-  assert.equal(capped.series[39], 39);
+  assert.equal(capped.series[0]?.index, 0);
+  assert.equal(capped.series[39]?.index, 39);
 
   const exact = capSeries(rows.slice(0, 40));
   assert.equal(exact.truncated, false);
   assert.equal(exact.series.length, 40);
+});
+
+test("capSeries keeps later summary metrics when shards fill the cap", () => {
+  const rows = ["cpu", "lag", "disk"].flatMap((metric) =>
+    Array.from({ length: 20 }, (_, index) => ({ metric, index })),
+  );
+  const capped = capSeries(rows);
+  assert.equal(capped.truncated, true);
+  assert.equal(capped.series.length, 40);
+  const counts = new Map<string, number>();
+  for (const row of capped.series) counts.set(row.metric, (counts.get(row.metric) ?? 0) + 1);
+  assert.equal(counts.get("cpu"), 14);
+  assert.equal(counts.get("lag"), 13);
+  assert.equal(counts.get("disk"), 13);
 });
 
 test("metricUnit matches tablet and byte metrics", () => {
