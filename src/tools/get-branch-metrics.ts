@@ -151,6 +151,7 @@ export interface SeriesStats {
   latest: number;
   min: number;
   avg: number;
+  p95: number;
   max: number;
 }
 
@@ -171,6 +172,7 @@ export interface SeriesRow {
   latest: number | null;
   min: number | null;
   avg: number | null;
+  p95: number | null;
   max: number | null;
   series_count?: number;
   points?: number[][];
@@ -358,7 +360,19 @@ export function planMetricRequests(
   };
 }
 
-/** Latest, min, average, and max. Skips missing, NaN, and infinite samples. */
+/** Inclusive percentile. One sample returns that sample. */
+function percentile(values: number[], p: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (sorted.length - 1) * p;
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  const lowValue = sorted[low]!;
+  if (low === high) return lowValue;
+  const weight = rank - low;
+  return lowValue * (1 - weight) + sorted[high]! * weight;
+}
+
+/** Latest, min, average, p95, and max. Skips missing, NaN, and infinite samples. */
 export function summarizePoints(points: number[][]): SeriesStats | null {
   const values: number[] = [];
   for (const point of points) {
@@ -381,6 +395,7 @@ export function summarizePoints(points: number[][]): SeriesStats | null {
     latest: values[values.length - 1]!,
     min,
     avg: sum / values.length,
+    p95: percentile(values, 0.95),
     max,
   };
 }
@@ -642,6 +657,7 @@ export function rollupSummarySeries(rows: SeriesRow[], preserve: string[] = []):
     const latest = numbers((row) => row.latest);
     const mins = numbers((row) => row.min);
     const maxes = numbers((row) => row.max);
+    const p95s = numbers((row) => row.p95);
     const avgs = numbers((row) => row.avg);
     const worst = group.reduce((best, row) =>
       (row.max ?? Number.NEGATIVE_INFINITY) > (best.max ?? Number.NEGATIVE_INFINITY) ? row : best,
@@ -651,6 +667,7 @@ export function rollupSummarySeries(rows: SeriesRow[], preserve: string[] = []):
       latest: latest.length ? roundMetricValue(Math.max(...latest)) : null,
       min: mins.length ? roundMetricValue(Math.min(...mins)) : null,
       max: maxes.length ? roundMetricValue(Math.max(...maxes)) : null,
+      p95: p95s.length ? roundMetricValue(Math.max(...p95s)) : null,
       avg: avgs.length
         ? roundMetricValue(avgs.reduce((sum, value) => sum + value, 0) / avgs.length)
         : null,
@@ -670,6 +687,7 @@ function emptySeriesRow(metric: string, catalog: Map<string, CatalogEntry>): Ser
     latest: null,
     min: null,
     avg: null,
+    p95: null,
     max: null,
   };
 }
@@ -823,7 +841,7 @@ function resolveSteps(
 export const getBranchMetricsGram = new Gram().tool({
   name: "get_branch_metrics",
   description:
-    "Get infrastructure metrics for a PlanetScale branch: CPU, memory, disk, replication lag, connections, PgBouncer, WAL, VTGate, and tablet health. The database kind selects the endpoint. Vitess uses tablet metrics; Postgres and Neki use branch metrics. view summary (the default) returns latest, min, avg, and max for a small health set plus current disk and connection values, without raw samples. Pod memory utilization includes page cache, so the summary also returns RSS and cache bytes. Vitess shard_storage_usage is percent full, not bytes. Use view series or instant and pass metrics to drill in. Series disk is planetscale_volume_usage_percentages; the current value is planetscale_volume_usage_percentage. Postgres and Neki names look like planetscale_primary_pods_cpu_util_percentages. Vitess tablet names are short, like primary_cpu_usage and replication_lag. Use get_insights for which queries are slow. Set include_points to return samples, at most 60 per series. Summary rolls per-pod series up to the busiest shard or role.",
+    "Get infrastructure metrics for a PlanetScale branch: CPU, memory, disk, replication lag, connections, PgBouncer, WAL, VTGate, and tablet health. The database kind selects the endpoint. Vitess uses tablet metrics; Postgres and Neki use branch metrics. view summary (the default) returns latest, min, avg, p95, and max for a small health set plus current disk and connection values, without raw samples. Use p95 rather than max to judge typical load. Pod memory utilization includes page cache, so the summary also returns RSS and cache bytes. Vitess shard_storage_usage is percent full, not bytes. Use view series or instant and pass metrics to drill in. Series disk is planetscale_volume_usage_percentages; the current value is planetscale_volume_usage_percentage. Postgres and Neki names look like planetscale_primary_pods_cpu_util_percentages. Vitess tablet names are short, like primary_cpu_usage and replication_lag. Use get_insights for which queries are slow. Set include_points to return samples, at most 60 per series. Summary rolls per-pod series up to the busiest shard or role.",
   annotations: {
     title: "Get branch metrics",
     readOnlyHint: true,
@@ -984,6 +1002,7 @@ export const getBranchMetricsGram = new Gram().tool({
               latest: numberOrNull(stats?.latest ?? null),
               min: numberOrNull(stats?.min ?? null),
               avg: numberOrNull(stats?.avg ?? null),
+              p95: numberOrNull(stats?.p95 ?? null),
               max: numberOrNull(stats?.max ?? null),
               ...(includePoints ? { points: item.points ?? [] } : {}),
             });
