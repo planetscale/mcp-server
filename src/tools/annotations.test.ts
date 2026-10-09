@@ -5,6 +5,7 @@ import gram from "../gram.ts";
 const expectedAnnotations = {
   execute_read_query: [true, false, false],
   execute_write_query: [false, true, false],
+  get_branch_metrics: [true, false, false],
   get_insights: [true, false, false],
   get_postgres_logs: [true, false, false],
   list_cluster_sizes: [true, false, false],

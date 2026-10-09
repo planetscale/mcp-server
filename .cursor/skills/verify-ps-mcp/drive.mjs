@@ -19,6 +19,7 @@ const CALL_TIMEOUT_MS = 90_000;
 const EXPECTED_TOOLS = [
   "execute_read_query",
   "execute_write_query",
+  "get_branch_metrics",
   "get_insights",
   "get_payment_method_setup",
   "get_postgres_logs",
