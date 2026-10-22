@@ -86,6 +86,14 @@ function isDDLQuery(query: string): { isDDL: boolean; statement: string | null }
 }
 
 /**
+ * Strips leading whitespace and comments (--, # and block comments) so the statement keyword comes first.
+ * Block comments that nest or start with /*! are left in place.
+ */
+function stripLeadingComments(query: string): string {
+  return query.replace(/^(?:\s+|--[^\n]*|#[^\n]*|\/\*(?!!)(?:(?!\/\*)[\s\S])*?\*\/)*/, "");
+}
+
+/**
  * Validates a write query for safety.
  * - Blocks TRUNCATE entirely
  * - Requires confirmation for DDL (CREATE, DROP, ALTER, RENAME) statements
@@ -97,10 +105,20 @@ export function validateWriteQuery(
   query: string,
   confirmed: boolean
 ): ValidationResult {
-  const normalized = query.trim().toUpperCase();
+  const statement = stripLeadingComments(query);
+  const normalized = statement.toUpperCase();
+
+  // Postgres nests block comments and MySQL runs /*! ones, so where they end depends on the engine
+  if (statement.startsWith("/*")) {
+    return {
+      allowed: false,
+      requiresConfirmation: false,
+      reason: "A query cannot start with a nested block comment or a /*! comment.",
+    };
+  }
 
   // Check for DDL statements
-  const ddlCheck = isDDLQuery(query);
+  const ddlCheck = isDDLQuery(statement);
   
   // Block TRUNCATE entirely
   if (normalized.startsWith("TRUNCATE")) {
@@ -124,7 +142,7 @@ export function validateWriteQuery(
 
   // DELETE validation
   if (normalized.startsWith("DELETE")) {
-    const hasWhere = /\bWHERE\b/i.test(query);
+    const hasWhere = /\bWHERE\b/i.test(statement);
 
     // Block DELETE without WHERE entirely
     if (!hasWhere) {
@@ -136,7 +154,7 @@ export function validateWriteQuery(
     }
 
     // Block DELETE with always-true WHERE clause (e.g., WHERE 1=1)
-    if (hasAlwaysTrueWhereClause(query)) {
+    if (hasAlwaysTrueWhereClause(statement)) {
       return {
         allowed: false,
         requiresConfirmation: false,
@@ -156,7 +174,7 @@ export function validateWriteQuery(
 
   // UPDATE validation
   if (normalized.startsWith("UPDATE")) {
-    const hasWhere = /\bWHERE\b/i.test(query);
+    const hasWhere = /\bWHERE\b/i.test(statement);
 
     // Block UPDATE without WHERE entirely
     if (!hasWhere) {
@@ -168,7 +186,7 @@ export function validateWriteQuery(
     }
 
     // Block UPDATE with always-true WHERE clause
-    if (hasAlwaysTrueWhereClause(query)) {
+    if (hasAlwaysTrueWhereClause(statement)) {
       return {
         allowed: false,
         requiresConfirmation: false,
