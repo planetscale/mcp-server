@@ -19,6 +19,7 @@ touched others. Check this list before claiming a change is verified.
 | Read queries | [execute-read-query.md](./execute-read-query.md) | yes | yes, read-only |
 | Write query guards | [execute-write-query.md](./execute-write-query.md) | yes | rejection paths only |
 | Cluster sizes | [list-cluster-sizes.md](./list-cluster-sizes.md) | yes | yes, read-only |
+| Live connections | [list-live-connections.md](./list-live-connections.md) | yes | yes, read-only |
 | Docs search | [search-documentation.md](./search-documentation.md) | no | yes, read-only |
 
 `get_payment_method_setup` and `update_payment_method`

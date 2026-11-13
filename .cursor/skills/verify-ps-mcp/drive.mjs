@@ -25,6 +25,7 @@ const EXPECTED_TOOLS = [
   "get_postgres_logs",
   "get_query_tag",
   "list_cluster_sizes",
+  "list_live_connections",
   "list_query_error_executions",
   "list_query_error_patterns",
   "list_query_tag_summaries",

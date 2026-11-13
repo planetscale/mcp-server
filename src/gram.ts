@@ -7,6 +7,7 @@ import { getBranchMetricsGram } from "./tools/get-branch-metrics.ts";
 import { getInsightsGram } from "./tools/get-insights.ts";
 import { getPostgresLogsGram } from "./tools/get-postgres-logs.ts";
 import { listClusterSizesGram } from "./tools/list-cluster-sizes.ts";
+import { liveConnectionsGram } from "./tools/live-connections.ts";
 import { paymentMethodsGram } from "./tools/payment-methods.ts";
 import { queryErrorsGram } from "./tools/query-errors.ts";
 import { queryTagsGram } from "./tools/query-tags.ts";
@@ -32,6 +33,7 @@ const gram = new Gram({
   .extend(getInsightsGram)
   .extend(getPostgresLogsGram)
   .extend(listClusterSizesGram)
+  .extend(liveConnectionsGram)
   .extend(paymentMethodsGram)
   .extend(queryErrorsGram)
   .extend(queryTagsGram)
