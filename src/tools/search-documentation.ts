@@ -2,7 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { searchPlanetScaleBlogs } from "../lib/blog-search.ts";
+import { searchPlanetScaleBlogs, tokenizeQuery } from "../lib/blog-search.ts";
 
 const DEFAULT_MCP_URL = "https://planetscale.com/docs/mcp";
 
@@ -241,6 +241,76 @@ function getDocsMcpUrl(env: Record<string, string | undefined>): string {
   }
 }
 
+export const DOCS_ENGINES = ["postgres", "vitess", "neki"] as const;
+export type DocsEngine = (typeof DOCS_ENGINES)[number];
+
+const ENGINE_PATTERNS: ReadonlyArray<[DocsEngine, RegExp]> = [
+  ["postgres", /\bpostgres(?:ql)?\b/i],
+  ["vitess", /\b(?:vitess|mysql)\b/i],
+  ["neki", /\bneki\b/i],
+];
+
+/**
+ * The engine a query is about, when it names exactly one. "MySQL" means
+ * Vitess. A query naming none or several engines (e.g. "import Postgres into
+ * Neki") returns undefined and keeps the upstream order.
+ */
+export function inferEngine(query: string): DocsEngine | undefined {
+  const named = ENGINE_PATTERNS.filter(([, pattern]) => pattern.test(query));
+  return named.length === 1 ? named[0]![0] : undefined;
+}
+
+/** `postgres`, `vitess` or `neki` for a docs page under that engine's section. */
+export function engineOfResult(result: NormalizedResult): DocsEngine | undefined {
+  let page = result.page;
+  if (!page && result.url) {
+    const match = /planetscale\.com\/docs\/([^#?]*)/.exec(result.url);
+    page = match?.[1];
+  }
+  const section = page?.replace(/^\/+/, "").split("/")[0];
+  return DOCS_ENGINES.find((engine) => engine === section);
+}
+
+/**
+ * True when every query token is in the post's title or slug. Body-only
+ * matches are weak: the feed carries full post bodies, so long posts contain
+ * most common query words.
+ */
+export function isTitleMatch(hit: NormalizedResult, query: string): boolean {
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) {
+    return false;
+  }
+  const slug = hit.page?.replace(/^blog\//, "").replaceAll("-", " ") ?? "";
+  const words = new Set([...tokenizeQuery(hit.title ?? ""), ...tokenizeQuery(slug)]);
+  return tokens.every((token) => words.has(token));
+}
+
+/**
+ * Final result order:
+ * 1. blog posts whose title or slug matches every query token,
+ * 2. docs, with the asked engine's pages first (stable, so upstream order
+ *    holds within each group),
+ * 3. blog posts that matched on body text only.
+ */
+export function orderResults(
+  query: string,
+  docs: NormalizedResult[],
+  blogs: NormalizedResult[],
+  engine: DocsEngine | undefined = inferEngine(query)
+): NormalizedResult[] {
+  const orderedDocs =
+    engine === undefined
+      ? docs
+      : [
+          ...docs.filter((doc) => engineOfResult(doc) === engine),
+          ...docs.filter((doc) => engineOfResult(doc) !== engine),
+        ];
+  const strongBlogs = blogs.filter((hit) => isTitleMatch(hit, query));
+  const weakBlogs = blogs.filter((hit) => !isTitleMatch(hit, query));
+  return [...strongBlogs, ...orderedDocs, ...weakBlogs];
+}
+
 export const searchDocumentationGram = new Gram().tool({
   name: "search_documentation",
   description:
@@ -255,6 +325,12 @@ export const searchDocumentationGram = new Gram().tool({
     query: z
       .string()
       .describe("Search query for PlanetScale docs and blog posts"),
+    engine: z
+      .enum(DOCS_ENGINES)
+      .optional()
+      .describe(
+        "Optional: the database engine the question is about (postgres, vitess or neki; MySQL databases are vitess). Docs for this engine are ranked first. When omitted, the engine is inferred from the query if it names exactly one."
+      ),
   },
   async execute(ctx, input) {
     const env =
@@ -285,7 +361,12 @@ export const searchDocumentationGram = new Gram().tool({
         ? extractResultsFromStructuredContent(result.structuredContent)
         : extractResultsFromContent(result.content);
       const blogResults = await blogPromise;
-      const normalizedResults = [...blogResults, ...docsResults];
+      const normalizedResults = orderResults(
+        input.query,
+        docsResults,
+        blogResults,
+        input.engine ?? inferEngine(input.query)
+      );
 
       return ctx.json({
         results: normalizedResults,
