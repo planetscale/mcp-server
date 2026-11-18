@@ -258,8 +258,7 @@ export function normalizeEngine(value: EngineInput): DocsEngine {
 }
 
 const ENGINE_PATTERNS: ReadonlyArray<[DocsEngine, RegExp]> = [
-  // postgres_fdw, pg_dump, psql and PgBouncer are Postgres questions too
-  ["postgres", /\b(?:postgres(?:ql)?(?:_\w+)?|psql|pgbouncer|pg_\w+)\b/i],
+  ["postgres", /\bpostgres(?:ql)?(?:_\w+)?\b/i],
   ["vitess", /\b(?:vitess|mysql)\b/i],
   ["neki", /\bneki\b/i],
 ];
@@ -269,9 +268,18 @@ const ENGINE_PATTERNS: ReadonlyArray<[DocsEngine, RegExp]> = [
  * Vitess. A query naming none or several engines (e.g. "import Postgres into
  * Neki") returns undefined and keeps the upstream order.
  */
+/**
+ * Postgres client tools (psql, pg_dump, PgBouncer). Neki speaks the Postgres
+ * protocol, so these only mean Postgres when no engine is named outright:
+ * "psql into my Neki database" is a Neki question.
+ */
+const POSTGRES_TOOLS = /\b(?:psql|pgbouncer|pg_\w+)\b/i;
+
 export function inferEngine(query: string): DocsEngine | undefined {
   const named = ENGINE_PATTERNS.filter(([, pattern]) => pattern.test(query));
-  return named.length === 1 ? named[0]![0] : undefined;
+  if (named.length === 1) return named[0]![0];
+  if (named.length === 0 && POSTGRES_TOOLS.test(query)) return "postgres";
+  return undefined;
 }
 
 /** The docs path of a result (`postgres/backups`), from its page or its URL. */

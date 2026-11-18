@@ -267,3 +267,10 @@ test("generic path words do not promote a neutral page", () => {
 test("docs.planetscale.com urls are read too", () => {
   assert.equal(engineOfResult({ url: "https://docs.planetscale.com/vitess/backups" }), "vitess");
 });
+
+test("Postgres tools with Neki named are Neki questions (Bugbot on 22d9e86)", () => {
+  assert.equal(inferEngine("psql into my Neki database"), "neki");
+  assert.equal(inferEngine("pg_dump a Neki branch"), "neki");
+  assert.equal(inferEngine("PgBouncer settings for Neki"), "neki");
+  assert.equal(inferEngine("pg_dump from Vitess"), "vitess");
+});
