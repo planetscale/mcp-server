@@ -2,7 +2,7 @@ import { Gram } from "@gram-ai/functions";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { searchPlanetScaleBlogs } from "../lib/blog-search.ts";
+import { searchPlanetScaleBlogs, tokenizeQuery } from "../lib/blog-search.ts";
 
 const DEFAULT_MCP_URL = "https://planetscale.com/docs/mcp";
 
@@ -241,10 +241,169 @@ function getDocsMcpUrl(env: Record<string, string | undefined>): string {
   }
 }
 
+export const DOCS_ENGINES = ["postgres", "vitess", "neki"] as const;
+export type DocsEngine = (typeof DOCS_ENGINES)[number];
+
+/**
+ * Values accepted for the `engine` input: the docs section names plus the
+ * branch `kind` values other tools report (`mysql`, `postgresql`).
+ */
+export const ENGINE_INPUTS = ["postgres", "postgresql", "vitess", "mysql", "neki"] as const;
+export type EngineInput = (typeof ENGINE_INPUTS)[number];
+
+export function normalizeEngine(value: EngineInput): DocsEngine {
+  if (value === "postgresql") return "postgres";
+  if (value === "mysql") return "vitess";
+  return value;
+}
+
+const ENGINE_PATTERNS: ReadonlyArray<[DocsEngine, RegExp]> = [
+  ["postgres", /\bpostgres(?:ql)?(?:_\w+)?\b/i],
+  ["vitess", /\b(?:vitess|mysql)\b/i],
+  ["neki", /\bneki\b/i],
+];
+
+/**
+ * The engine a query is about, when it names exactly one. "MySQL" means
+ * Vitess. A query naming none or several engines (e.g. "import Postgres into
+ * Neki") returns undefined and keeps the upstream order.
+ */
+/**
+ * Postgres client tools (psql, pg_dump, PgBouncer). Neki speaks the Postgres
+ * protocol, so these only mean Postgres when no engine is named outright:
+ * "psql into my Neki database" is a Neki question.
+ */
+const POSTGRES_TOOLS = /\b(?:psql|pgbouncer|pg_\w+)\b/i;
+
+export function inferEngine(query: string): DocsEngine | undefined {
+  const named = ENGINE_PATTERNS.filter(([, pattern]) => pattern.test(query));
+  if (named.length === 1) return named[0]![0];
+  if (named.length === 0 && POSTGRES_TOOLS.test(query)) return "postgres";
+  return undefined;
+}
+
+/** The docs path of a result (`postgres/backups`), from its page or its URL. */
+function docsPath(result: NormalizedResult): string | undefined {
+  let page = result.page;
+  if (!page && result.url) {
+    const match =
+      /^https?:\/\/(?:www\.)?planetscale\.com\/docs\/([^#?]*)/.exec(result.url) ??
+      /^https?:\/\/docs\.planetscale\.com\/([^#?]*)/.exec(result.url);
+    page = match?.[1];
+  }
+  return page?.replace(/^\/+/, "");
+}
+
+/** `postgres`, `vitess` or `neki` for a docs page under that engine's section. */
+export function engineOfResult(result: NormalizedResult): DocsEngine | undefined {
+  const section = docsPath(result)?.split("/")[0];
+  return DOCS_ENGINES.find((engine) => engine === section);
+}
+
+/** Path words too common to say what a page is about. */
+const GENERIC_PATH_WORDS = new Set([
+  "api", "reference", "overview", "docs", "create", "database", "databases", "getting",
+  "started", "guide", "guides", "concepts", "introduction", "index", "a", "an", "the", "and", "to",
+]);
+
+/**
+ * True when an engine-neutral page's path names something the query asks
+ * about: `cli/backup` for "pscale backup ...", `security/sso` for "set up SSO".
+ * `pscale` counts as asking for `cli/` pages. Generic path words do not count.
+ */
+function pathMatchesQuery(result: NormalizedResult, queryTokens: ReadonlySet<string>): boolean {
+  const words = new Set(
+    (docsPath(result) ?? "").split(/[/-]/).filter((w) => w && !GENERIC_PATH_WORDS.has(w))
+  );
+  if (words.has("cli")) words.add("pscale");
+  return [...words].some((word) => queryTokens.has(word));
+}
+
+/** Words that name each engine in a docs path (`postgres/imports/mysql`). */
+const ENGINE_PATH_WORDS: Record<DocsEngine, readonly string[]> = {
+  postgres: ["postgres", "postgresql"],
+  vitess: ["vitess", "mysql"],
+  neki: ["neki"],
+};
+
+/**
+ * True when another engine's page is about the asked engine, as migration and
+ * import pages are: "import a MySQL database" is answered by
+ * `postgres/imports/mysql` as much as by a Vitess page.
+ */
+function pathNamesEngine(result: NormalizedResult, engine: DocsEngine): boolean {
+  const words = (docsPath(result) ?? "").split(/[/-]/).slice(1);
+  return words.some((word) => ENGINE_PATH_WORDS[engine].includes(word));
+}
+
+/**
+ * True when every query token is in the post's title or slug. Body-only
+ * matches are weak: the feed carries full post bodies, so long posts contain
+ * most common query words. A one-word query ("postgres") would make nearly
+ * every post a title match, so it only counts when the title or slug is
+ * exactly that word.
+ */
+export function isTitleMatch(hit: NormalizedResult, query: string): boolean {
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) {
+    return false;
+  }
+  const slug = hit.page?.replace(/^blog\//, "").replaceAll("-", " ") ?? "";
+  const titleTokens = tokenizeQuery(hit.title ?? "");
+  const slugTokens = tokenizeQuery(slug);
+  if (tokens.length === 1) {
+    const only = [tokens[0]];
+    const same = (t: string[]) => t.length === 1 && t[0] === only[0];
+    return same(titleTokens) || same(slugTokens);
+  }
+  const words = new Set([...titleTokens, ...slugTokens]);
+  return tokens.every((token) => words.has(token));
+}
+
+/**
+ * Final result order:
+ * 1. blog posts whose title or slug matches every query token,
+ * 2. docs, when an engine is known, in three stable groups (upstream order
+ *    holds within each):
+ *    a. the engine's own pages, and engine-neutral pages whose path matches
+ *       the query (`cli/backup` for "pscale backup create on Postgres"),
+ *    b. other engine-neutral pages (concepts, security, billing, ...),
+ *       (and other engines' pages about the asked engine, such as
+ *       `postgres/imports/mysql` for a MySQL question),
+ *    c. pages for a different engine, which are the wrong answer;
+ *    with no engine, docs keep the upstream order,
+ * 3. blog posts that matched on body text only.
+ */
+export function orderResults(
+  query: string,
+  docs: NormalizedResult[],
+  blogs: NormalizedResult[],
+  engine: DocsEngine | undefined
+): NormalizedResult[] {
+  let orderedDocs = docs;
+  if (engine !== undefined) {
+    const queryTokens = new Set(tokenizeQuery(query));
+    const group = (doc: NormalizedResult): number => {
+      const docEngine = engineOfResult(doc);
+      if (docEngine === engine) return 0;
+      if (docEngine === undefined) return pathMatchesQuery(doc, queryTokens) ? 0 : 1;
+      return pathNamesEngine(doc, engine) ? 1 : 2;
+    };
+    const groups: NormalizedResult[][] = [[], [], []];
+    for (const doc of docs) groups[group(doc)]!.push(doc);
+    orderedDocs = groups.flat();
+  }
+
+  const strongBlogs: NormalizedResult[] = [];
+  const weakBlogs: NormalizedResult[] = [];
+  for (const hit of blogs) (isTitleMatch(hit, query) ? strongBlogs : weakBlogs).push(hit);
+  return [...strongBlogs, ...orderedDocs, ...weakBlogs];
+}
+
 export const searchDocumentationGram = new Gram().tool({
   name: "search_documentation",
   description:
-    "Search across PlanetScale documentation and blog posts to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to documentation pages and /blog posts.",
+    "Search across PlanetScale documentation and blog posts to find relevant information, code examples, API references, and guides. Use this tool when you need to answer questions about PlanetScale, find specific documentation, understand how features work, or locate implementation details. The search returns contextual content with titles and direct links to documentation pages and /blog posts. Docs come before blog posts unless a post's title matches the whole query. Pass `engine` (or name the engine in the query) when the question is about one database engine: docs for that engine, and engine-neutral pages such as CLI or security pages that match the query, come before pages for other engines.",
   annotations: {
     title: "Search PlanetScale documentation",
     readOnlyHint: true,
@@ -255,6 +414,12 @@ export const searchDocumentationGram = new Gram().tool({
     query: z
       .string()
       .describe("Search query for PlanetScale docs and blog posts"),
+    engine: z
+      .enum(ENGINE_INPUTS)
+      .optional()
+      .describe(
+        "Optional: the database engine the question is about. Accepts postgres, vitess, neki, or a branch kind from other tools (mysql, postgresql). Docs for this engine are ranked first. When omitted, the engine is inferred from the query if it names exactly one."
+      ),
   },
   async execute(ctx, input) {
     const env =
@@ -285,7 +450,14 @@ export const searchDocumentationGram = new Gram().tool({
         ? extractResultsFromStructuredContent(result.structuredContent)
         : extractResultsFromContent(result.content);
       const blogResults = await blogPromise;
-      const normalizedResults = [...blogResults, ...docsResults];
+      const normalizedResults = orderResults(
+        input.query,
+        docsResults,
+        blogResults,
+        input.engine !== undefined
+          ? normalizeEngine(input.engine)
+          : inferEngine(input.query)
+      );
 
       return ctx.json({
         results: normalizedResults,
