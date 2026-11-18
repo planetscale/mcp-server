@@ -115,6 +115,9 @@ const doc = (page: string) => ({
   url: `https://planetscale.com/docs/${page}`,
   page,
 });
+/** What the tool does: infer the engine from the query, then order. */
+const order = (query: string, docs: ReturnType<typeof doc>[], blogs: ReturnType<typeof doc>[]) =>
+  orderResults(query, docs, blogs, inferEngine(query));
 const blog = (slug: string, title: string) => ({
   title,
   url: `https://planetscale.com/blog/${slug}`,
@@ -142,7 +145,7 @@ test("reads the engine from a docs page or url", () => {
   assert.equal(engineOfResult(blog("postgres-17", "Postgres 17")), undefined);
 });
 
-test("docs for the asked engine come first, upstream order kept within groups", () => {
+test("asked engine first, then neutral pages, then other engines; upstream order kept within groups", () => {
   const docs = [
     doc("cli/backup"),
     doc("neki/coming-from-postgres"),
@@ -151,7 +154,7 @@ test("docs for the asked engine come first, upstream order kept within groups", 
     doc("postgres/backups"),
   ];
 
-  const pages = orderResults("how do backups work on PlanetScale Postgres", docs, []).map(
+  const pages = order("how do backups work on PlanetScale Postgres", docs, []).map(
     (r) => r.page
   );
 
@@ -172,7 +175,7 @@ test("an explicit engine overrides the query", () => {
 
 test("no engine named keeps the upstream docs order", () => {
   const docs = [doc("vitess/backups"), doc("postgres/backups")];
-  const pages = orderResults("import Postgres into Neki", docs, []).map((r) => r.page);
+  const pages = order("import Postgres into Neki", docs, []).map((r) => r.page);
   assert.deepEqual(pages, ["vitess/backups", "postgres/backups"]);
 });
 
@@ -180,7 +183,7 @@ test("a blog post matching on title stays above docs", () => {
   const strong = blog("what-is-a-neki-router", "What is a Neki router?");
   assert.ok(isTitleMatch(strong, "what is a neki router"));
 
-  const results = orderResults("what is a neki router", [doc("neki/overview")], [strong]);
+  const results = order("what is a neki router", [doc("neki/overview")], [strong]);
   assert.equal(results[0]?.page, "blog/what-is-a-neki-router");
 });
 
@@ -188,7 +191,7 @@ test("a blog post matching only on body text goes below docs", () => {
   const weak = blog("introducing-tin", "Introducing Tin");
   assert.equal(isTitleMatch(weak, "how do backups work on PlanetScale Postgres"), false);
 
-  const pages = orderResults(
+  const pages = order(
     "how do backups work on PlanetScale Postgres",
     [doc("cli/backup"), doc("postgres/backups")],
     [weak]
@@ -219,4 +222,48 @@ test("the engine input schema accepts branch kind values", async () => {
   for (const kind of ["mysql", "postgresql", "vitess", "postgres", "neki"]) {
     assert.ok(schema.includes(`"${kind}"`), `engine schema should accept ${kind}`);
   }
+});
+
+test("a neutral page whose path matches the query ranks with the engine's pages", () => {
+  const docs = [doc("postgres/pricing"), doc("neki/backups"), doc("cli/backup"), doc("security/sso")];
+  const pages = order("pscale backup create on my Postgres branch", docs, []).map((r) => r.page);
+  assert.deepEqual(pages, ["postgres/pricing", "cli/backup", "security/sso", "neki/backups"]);
+});
+
+test("a neutral security page asked for by name ranks with the engine's pages", () => {
+  const docs = [doc("postgres/connecting"), doc("vitess/sso"), doc("security/sso")];
+  const pages = order("set up SSO for my Postgres organization", docs, []).map((r) => r.page);
+  assert.deepEqual(pages, ["postgres/connecting", "security/sso", "vitess/sso"]);
+});
+
+test("Postgres tools and extensions name the Postgres engine", () => {
+  for (const query of ["psql cannot connect", "pg_dump my database", "postgres_fdw setup", "PgBouncer pool size"]) {
+    assert.equal(inferEngine(query), "postgres", query);
+  }
+});
+
+test("the url fallback only reads planetscale.com docs urls", () => {
+  assert.equal(engineOfResult({ url: "https://planetscale.com/docs/postgres/backups" }), "postgres");
+  assert.equal(engineOfResult({ url: "https://evilplanetscale.com/docs/postgres/backups" }), undefined);
+});
+
+test("a one-word query is a title match only when the title is that word", () => {
+  assert.equal(isTitleMatch(blog("postgres-17", "Postgres 17 is here"), "postgres"), false);
+  assert.equal(isTitleMatch(blog("branching", "Branching"), "branching"), true);
+});
+
+test("another engine's import page for the asked engine stays above other engines' pages", () => {
+  const docs = [doc("postgres/backups"), doc("postgres/imports/mysql"), doc("vitess/imports")];
+  const pages = order("import a MySQL database", docs, []).map((r) => r.page);
+  assert.deepEqual(pages, ["vitess/imports", "postgres/imports/mysql", "postgres/backups"]);
+});
+
+test("generic path words do not promote a neutral page", () => {
+  const docs = [doc("api-reference/create-a-database"), doc("postgres/getting-started")];
+  const pages = order("create a database on postgres", docs, []).map((r) => r.page);
+  assert.deepEqual(pages, ["postgres/getting-started", "api-reference/create-a-database"]);
+});
+
+test("docs.planetscale.com urls are read too", () => {
+  assert.equal(engineOfResult({ url: "https://docs.planetscale.com/vitess/backups" }), "vitess");
 });
