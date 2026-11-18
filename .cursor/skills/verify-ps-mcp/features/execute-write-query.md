@@ -13,9 +13,12 @@ either runs the query, or hands back a refusal the agent is supposed to relay.
 
 ## Drive it
 
-The guard runs before `getDatabase`, before credentials are created, and before
-any connection opens, so the refusal paths are drivable without touching data.
-This is the part to verify.
+A query that MySQL and Postgres rules both refuse (or both send to confirmation)
+is answered by `precheckWriteQuery` before `getDatabase`, before credentials
+are created, and before any connection opens, so these refusal paths are
+drivable without touching data. Engine-specific cases (string escapes, comment
+rules) are decided after `getDatabase` but still before any credential.
+This is the part to verify; the examples below are all engine-independent.
 
 ```bash
 node .cursor/skills/verify-ps-mcp/drive.mjs call execute_write_query \
@@ -49,9 +52,10 @@ node .cursor/skills/verify-ps-mcp/drive.mjs call execute_write_query \
 - DDL and `DELETE ... WHERE` return the confirmation prompt when
   `confirm_destructive` is absent.
 - No credential is created for any refused query. The tool logs nothing about
-  API calls, so confirm this by reading `execute()` (validation returns before
-  `getDatabase`) and, after a change to that ordering, by checking the branch's
-  passwords and roles in the PlanetScale UI after a refused run.
+  API calls, so confirm this by reading `execute()` (`precheckWriteQuery`
+  returns before `getDatabase`; `validateWriteQuery` with the engine's dialect
+  returns before credentials) and, after a change to that ordering, by checking
+  the branch's passwords and roles in the PlanetScale UI after a refused run.
 
 ## Successful writes
 

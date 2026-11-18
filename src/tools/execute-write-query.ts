@@ -13,7 +13,12 @@ import {
   executePostgresQuery,
   QueryTimeoutError,
 } from "../lib/query-executor.ts";
-import { validateWriteQuery } from "../lib/query-validator.ts";
+import {
+  dialectForKind,
+  precheckWriteQuery,
+  validateWriteQuery,
+  type ValidationResult,
+} from "../lib/query-validator.ts";
 import { getAuthToken, getAuthHeader } from "../lib/auth.ts";
 
 export const executeWriteQueryGram = new Gram().tool({
@@ -62,6 +67,13 @@ export const executeWriteQueryGram = new Gram().tool({
         return ctx.text("Error: query is required");
       }
 
+      const guardResponse = (validation: ValidationResult) => {
+        if (validation.requiresConfirmation) {
+          return ctx.text(`HUMAN CONFIRMATION REQUIRED\n\nThis query needs explicit user approval before execution.\n\nQuery: ${query}\n\nReason: ${validation.reason}\n\nINSTRUCTIONS FOR AI: You must ASK the user if they want to proceed with this query. Do NOT set confirm_destructive: true until the user explicitly says "yes" or "approved" or similar confirmation.`);
+        }
+        return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}`);
+      };
+
       const organization = input["organization"];
       const database = input["database"];
       const branch = input["branch"];
@@ -71,13 +83,10 @@ export const executeWriteQueryGram = new Gram().tool({
         return ctx.text("Error: organization, database, and branch are required");
       }
 
-      // Validate the write query for safety
-      const validation = validateWriteQuery(query, confirmed);
-      if (!validation.allowed) {
-        if (validation.requiresConfirmation) {
-          return ctx.text(`HUMAN CONFIRMATION REQUIRED\n\nThis query needs explicit user approval before execution.\n\nQuery: ${query}\n\nReason: ${validation.reason}\n\nINSTRUCTIONS FOR AI: You must ASK the user if they want to proceed with this query. Do NOT set confirm_destructive: true until the user explicitly says "yes" or "approved" or similar confirmation.`);
-        }
-        return ctx.text(`Error: ${validation.reason ?? "Query validation failed"}`);
+      // Refuse or ask before any API call when both engines' rules agree
+      const precheck = precheckWriteQuery(query, confirmed);
+      if (precheck) {
+        return guardResponse(precheck);
       }
 
       // Get auth header for API calls
@@ -86,6 +95,12 @@ export const executeWriteQueryGram = new Gram().tool({
       // Get database info to determine type
       const db = await getDatabase(organization, database, authHeader);
       const databaseKind: string = db.kind;
+
+      // Validate the write query for safety, lexed the way this engine reads SQL
+      const validation = validateWriteQuery(query, confirmed, dialectForKind(databaseKind));
+      if (!validation.allowed) {
+        return guardResponse(validation);
+      }
 
       if (databaseKind === "mysql") {
         // Vitess database - create password with admin role for DDL support
