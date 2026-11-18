@@ -328,6 +328,15 @@ describe("review round 3", () => {
     assert.ok(blocked("BEGIN; DELETE FROM users; COMMIT")));
 });
 
+describe("Bugbot on a5c7b58", () => {
+  for (const ch of [" ", "", "", ""]) {
+    it(`mysql: -- followed by control char ${JSON.stringify(ch)} is a comment`, () =>
+      assert.ok(blockedOn("mysql", `UPDATE t SET a = 1 --${ch}WHERE id = 1`)));
+  }
+  it("mysql: --x is still arithmetic, not a comment", () =>
+    assert.ok(runsOn("mysql", "UPDATE t SET a = 1--1 WHERE id = 1")));
+});
+
 describe("lexSql", () => {
   it("keeps offsets and newlines", () => {
     const query = "UPDATE t -- c\nSET a = 'x' /* y */ WHERE id = 1";
