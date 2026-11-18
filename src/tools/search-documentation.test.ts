@@ -5,6 +5,7 @@ import {
   extractResultsFromContent,
   inferEngine,
   isTitleMatch,
+  normalizeEngine,
   orderResults,
   parseDocsTextBlock,
 } from "./search-documentation.ts";
@@ -198,4 +199,24 @@ test("a blog post matching only on body text goes below docs", () => {
 
 test("a slug can carry the title match", () => {
   assert.ok(isTitleMatch(blog("postgres-backups-explained", "Explained"), "postgres backups"));
+});
+
+test("branch kinds from other tools map to docs engines", () => {
+  assert.equal(normalizeEngine("mysql"), "vitess");
+  assert.equal(normalizeEngine("postgresql"), "postgres");
+  assert.equal(normalizeEngine("neki"), "neki");
+  assert.equal(normalizeEngine("vitess"), "vitess");
+  assert.equal(normalizeEngine("postgres"), "postgres");
+});
+
+test("the engine input schema accepts branch kind values", async () => {
+  const { searchDocumentationGram } = await import("./search-documentation.ts");
+  const tool = searchDocumentationGram
+    .manifest()
+    .tools?.find((t) => t.name === "search_documentation");
+  assert.ok(tool, "search_documentation is in the manifest");
+  const schema = JSON.stringify(tool.inputSchema);
+  for (const kind of ["mysql", "postgresql", "vitess", "postgres", "neki"]) {
+    assert.ok(schema.includes(`"${kind}"`), `engine schema should accept ${kind}`);
+  }
 });

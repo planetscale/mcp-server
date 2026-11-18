@@ -244,6 +244,19 @@ function getDocsMcpUrl(env: Record<string, string | undefined>): string {
 export const DOCS_ENGINES = ["postgres", "vitess", "neki"] as const;
 export type DocsEngine = (typeof DOCS_ENGINES)[number];
 
+/**
+ * Values accepted for the `engine` input: the docs section names plus the
+ * branch `kind` values other tools report (`mysql`, `postgresql`).
+ */
+export const ENGINE_INPUTS = ["postgres", "postgresql", "vitess", "mysql", "neki"] as const;
+export type EngineInput = (typeof ENGINE_INPUTS)[number];
+
+export function normalizeEngine(value: EngineInput): DocsEngine {
+  if (value === "postgresql") return "postgres";
+  if (value === "mysql") return "vitess";
+  return value;
+}
+
 const ENGINE_PATTERNS: ReadonlyArray<[DocsEngine, RegExp]> = [
   ["postgres", /\bpostgres(?:ql)?\b/i],
   ["vitess", /\b(?:vitess|mysql)\b/i],
@@ -326,10 +339,10 @@ export const searchDocumentationGram = new Gram().tool({
       .string()
       .describe("Search query for PlanetScale docs and blog posts"),
     engine: z
-      .enum(DOCS_ENGINES)
+      .enum(ENGINE_INPUTS)
       .optional()
       .describe(
-        "Optional: the database engine the question is about (postgres, vitess or neki; MySQL databases are vitess). Docs for this engine are ranked first. When omitted, the engine is inferred from the query if it names exactly one."
+        "Optional: the database engine the question is about. Accepts postgres, vitess, neki, or a branch kind from other tools (mysql, postgresql). Docs for this engine are ranked first. When omitted, the engine is inferred from the query if it names exactly one."
       ),
   },
   async execute(ctx, input) {
@@ -365,7 +378,9 @@ export const searchDocumentationGram = new Gram().tool({
         input.query,
         docsResults,
         blogResults,
-        input.engine ?? inferEngine(input.query)
+        input.engine !== undefined
+          ? normalizeEngine(input.engine)
+          : inferEngine(input.query)
       );
 
       return ctx.json({
